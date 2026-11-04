@@ -59,6 +59,18 @@ export const PROMO_CODES = {
   'DEMOPRO': { plan: PLANS.PRO, dias: 30, descripcion: 'Prueba PRO 30 Días' },
 };
 
+/** Suscripción permanente para cuentas con acceso total (user.fullAccess). */
+export const FULL_ACCESS_SUBSCRIPTION = {
+  plan: PLANS.PRO,
+  descripcion: 'Acceso total (cuenta habilitada)',
+  codigoAplicado: null,
+  expiraEn: null,
+};
+
+/** Devuelve la suscripción que corresponde al usuario actual. */
+export const getEffectiveSubscription = (user, storedSubscription) =>
+  user?.fullAccess ? FULL_ACCESS_SUBSCRIPTION : storedSubscription;
+
 const STORAGE_KEY_SUB = 'psicoplus_subscription_v1';
 
 export const getSubscriptionData = () => {

@@ -18,6 +18,16 @@ export const DEMO_USER = {
   isDemo: true,
 };
 
+// Cuenta completa de Virna: solo se guarda el hash SHA-256 (con sal) de su contraseña.
+const VIRNA_PASSWORD_HASH = '74e87de78a2c0faaa284fdea34490bb8570be6fd6166993a879f8a559489b0f5';
+
+export const VIRNA_FULL_USER = {
+  ...DEMO_USER,
+  id: 'user-virna-full',
+  isDemo: false,
+  fullAccess: true, // PRO ilimitado, sin vencimiento
+};
+
 export const getCurrentUser = () => {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
@@ -96,10 +106,14 @@ export const registerUser = async ({
 export const loginUser = async (email, password) => {
   const normalizedEmail = (email || '').trim().toLowerCase();
   
-  // Acceso de demostración
+  // Cuenta de Virna: requiere su contraseña y habilita acceso total
   if (normalizedEmail === DEMO_USER.email.toLowerCase()) {
-    setCurrentUser(DEMO_USER);
-    return { success: true, user: DEMO_USER };
+    const isMatch = await verifyPassword(password, VIRNA_PASSWORD_HASH);
+    if (!isMatch) {
+      return { success: false, error: 'Contraseña incorrecta.' };
+    }
+    setCurrentUser(VIRNA_FULL_USER);
+    return { success: true, user: VIRNA_FULL_USER };
   }
 
   const users = getRegisteredUsers();

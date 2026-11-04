@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HeartPulse } from 'lucide-react';
 import { getStoredData, saveToStorage } from './services/storage';
-import { getSubscriptionData, saveSubscriptionData, PLANS } from './services/subscription';
+import { getSubscriptionData, saveSubscriptionData, getEffectiveSubscription, PLANS } from './services/subscription';
 import { getCurrentUser, setCurrentUser, DEMO_USER } from './services/auth';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -61,7 +61,8 @@ export function AppContent() {
 
   // User & Subscription state
   const [currentUser, setCurUser] = useState(getCurrentUser());
-  const [subscription, setSubscription] = useState(getSubscriptionData());
+  const [storedSubscription, setSubscription] = useState(getSubscriptionData());
+  const subscription = getEffectiveSubscription(currentUser, storedSubscription);
 
   // Modals state
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
