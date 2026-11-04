@@ -25,8 +25,18 @@ import {
   OBRAS_SOCIALES_FISCALES, 
   NOMENCLADOR_SALUD_MENTAL, 
   validarCuit, 
-  autorizarComprobanteArca 
+  codigoTipoComprobante,
+  condicionIvaReceptorId,
+  documentoReceptor,
+  estadoFiscalFactura,
 } from '../../services/arcaService';
+import { autorizarComprobanteArca } from '../../services/arcaClient';
+
+const ETIQUETA_FISCAL = {
+  valida: { texto: 'Autorizada ARCA', clase: 'text-emerald-600 dark:text-emerald-400' },
+  prueba: { texto: 'Prueba (homologación) · sin validez fiscal', clase: 'text-amber-600 dark:text-amber-400' },
+  sin_validez: { texto: 'Sin CAE de ARCA · sin validez fiscal', clase: 'text-rose-600 dark:text-rose-400' },
+};
 import { useToast } from '../Common/Toast';
 
 export const FacturasView = ({
@@ -80,7 +90,10 @@ export const FacturasView = ({
   const totalFacturado = facturas.reduce((acc, f) => acc + (f.total || 0), 0);
   const totalCobrado = facturas.filter(f => f.estado === 'Cobrada').reduce((acc, f) => acc + (f.total || 0), 0);
   const totalPendiente = facturas.filter(f => f.estado === 'Pendiente').reduce((acc, f) => acc + (f.total || 0), 0);
-  const totalConCae = facturas.filter(f => Boolean(f.cae)).length;
+  const totalConCae = facturas.filter(f => estadoFiscalFactura(f) === 'valida').length;
+  const [arcaAutorizacion, setArcaAutorizacion] = useState(null);
+  const [facturaAutorizada, setFacturaAutorizada] = useState(null);
+  const [formId, setFormId] = useState('');
 
   // Filtrado de lista
   const facturasFiltradas = facturas.filter(f => {
@@ -123,13 +136,14 @@ export const FacturasView = ({
     setFormCondicionIvaReceptor('Consumidor Final');
     setFormEstado('Cobrada');
     setFormNomencladorCodigo('33.01.01');
-    setFormObservaciones('Comprobante oficial válido ante Obras Sociales y Empresas de Medicina Prepaga para reintegro de prestaciones de salud mental (Ley 23.660 / 23.661 y RG 4291 ARCA).');
+    setFormObservaciones('Prestaciones de salud mental. Comprobante para reintegro ante obra social / prepaga.');
     
-    // Generar CAE automático inicial de ARCA
-    setFormCae('75' + Math.floor(100000000000 + Math.random() * 900000000000));
-    const d = new Date();
-    d.setDate(d.getDate() + 10);
-    setFormVencimientoCae(d.toISOString().split('T')[0]);
+    // El CAE solo lo asigna ARCA al autorizar: nunca se precarga.
+    setFormCae('');
+    setFormVencimientoCae('');
+    setArcaAutorizacion(null);
+    setFacturaAutorizada(null);
+    setFormId(`fac-${Date.now()}`);
 
     if (preselected) {
       setModalidadEmision(preselected.obraSocialId && preselected.obraSocialId !== 'particular' ? 'reintegro_paciente' : 'particular');
@@ -265,50 +279,12 @@ export const FacturasView = ({
 
   const calculateSubtotal = () => items.reduce((acc, item) => acc + (item.total || 0), 0);
 
-  // Autorización en línea con ARCA (WSFE v1)
-  const handleAuthorizeArca = async () => {
-    setIsAuthorizingArca(true);
-    const subtotal = calculateSubtotal();
-
-    try {
-      const selectedOs = OBRAS_SOCIALES_FISCALES.find(o => o.id === formObraSocialId);
-      const res = await autorizarComprobanteArca({
-        cuitEmisor: config.cuit || '27-38452190-4',
-        puntoVenta: config.puntoVenta || '0001',
-        tipoComprobante: formTipoComprobante,
-        paciente: { nombre: formPacienteNombre, dni: formPacienteDni },
-        obraSocial: selectedOs,
-        modalidad: modalidadEmision,
-        items: items,
-        total: subtotal,
-        fechaServicioDesde: formFechaServicioDesde,
-        fechaServicioHasta: formFechaServicioHasta,
-        fechaVencimientoPago: formFechaVencimientoPago,
-        ambiente: 'homologacion'
-      });
-
-      if (res.success) {
-        setFormCae(res.cae);
-        setFormVencimientoCae(res.vencimientoCae);
-        toast.showSuccess(`¡Comprobante autorizado por ARCA! CAE N°: ${res.cae}`);
-      } else {
-        toast.showError(res.error || 'No se pudo obtener la autorización de ARCA.');
-      }
-    } catch (err) {
-      console.error('Error autorizando comprobante ARCA:', err);
-      toast.showError('Error en conexión con el servicio de ARCA WebServices.');
-    } finally {
-      setIsAuthorizingArca(false);
-    }
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  // Arma el comprobante tal como se guarda en la app.
+  const buildFacturaData = (extra = {}) => {
     const subtotal = calculateSubtotal();
     const selectedOs = OBRAS_SOCIALES_FISCALES.find(o => o.id === formObraSocialId);
-
-    const facturaData = {
-      id: editingFactura ? editingFactura.id : `fac-${Date.now()}`,
+    return {
+      id: editingFactura ? editingFactura.id : (formId || `fac-${Date.now()}`),
       numeroFactura: formNumeroFactura || getNextFacturaNumber(),
       tipoComprobante: formTipoComprobante,
       fechaEmision: formFechaEmision,
@@ -335,11 +311,100 @@ export const FacturasView = ({
       estado: formEstado,
       cae: formCae,
       vencimientoCae: formVencimientoCae,
-      observaciones: formObservaciones
+      observaciones: formObservaciones,
+      ...(arcaAutorizacion || {}),
+      ...extra,
     };
+  };
+
+  // Autorización real en ARCA (WSAA + WSFEv1). Si ARCA aprueba, la factura se guarda en el acto:
+  // el comprobante ya existe en ARCA y no puede perderse aunque se cierre el formulario.
+  const handleAuthorizeArca = async () => {
+    if (arcaAutorizacion) return;
+    const tipoCodigo = codigoTipoComprobante(formTipoComprobante);
+    if (tipoCodigo === 6) {
+      toast.showError('Por ahora ARCA se conecta para Factura C y Recibo C (monotributistas y exentos). La Factura B todavía no está soportada.');
+      return;
+    }
+    const condId = condicionIvaReceptorId(formCondicionIvaReceptor);
+    if (!condId) {
+      toast.showError('Elegí la condición frente al IVA del receptor.');
+      return;
+    }
+    const receptor = documentoReceptor(formPacienteDni);
+    if (modalidadEmision === 'directo_obra_social' && receptor.docTipo !== 80) {
+      toast.showError('Para facturar a una obra social hace falta su CUIT (11 dígitos).');
+      return;
+    }
+    if (receptor.docTipo === 80 && !validarCuit(formPacienteDni).valido) {
+      toast.showError('El CUIT del receptor no es válido.');
+      return;
+    }
+
+    setIsAuthorizingArca(true);
+    try {
+      const res = await autorizarComprobanteArca({
+        config,
+        comprobante: {
+          tipoComprobante: tipoCodigo,
+          docTipo: receptor.docTipo,
+          docNro: receptor.docNro,
+          condicionIvaReceptorId: condId,
+          total: calculateSubtotal(),
+          fechaEmision: formFechaEmision,
+          fechaServicioDesde: formFechaServicioDesde,
+          fechaServicioHasta: formFechaServicioHasta,
+          fechaVencimientoPago: formFechaVencimientoPago,
+        },
+      });
+
+      const datosArca = {
+        numeroFactura: res.numeroFactura,
+        cae: res.cae,
+        vencimientoCae: res.vencimientoCae,
+        arcaAutorizado: true,
+        arcaAmbiente: res.ambiente,
+        tipoComprobanteCodigo: res.tipoComprobanteCodigo,
+        puntoVenta: res.puntoVenta,
+        docTipoReceptor: receptor.docTipo,
+        cuitEmisor: String(config.cuit || '').replace(/\D/g, ''),
+        fechaAutorizacionArca: new Date().toISOString(),
+      };
+      setArcaAutorizacion(datosArca);
+      setFormNumeroFactura(res.numeroFactura);
+      setFormCae(res.cae);
+      setFormVencimientoCae(res.vencimientoCae);
+      const guardada = buildFacturaData(datosArca);
+      setFacturaAutorizada(guardada);
+      onSaveFactura(guardada);
+
+      const obs = res.observaciones?.length ? ` Observaciones de ARCA: ${res.observaciones.map(o => o.mensaje).join(' · ')}` : '';
+      if (res.ambiente === 'produccion') {
+        toast.showSuccess(`Autorizada por ARCA. Comprobante ${res.numeroFactura}, CAE ${res.cae}. Ya quedó guardada.${obs}`);
+      } else {
+        toast.showInfo(`Autorizada en HOMOLOGACIÓN (prueba, sin validez fiscal). Comprobante ${res.numeroFactura}, CAE ${res.cae}.${obs}`);
+      }
+    } catch (err) {
+      console.error('Error autorizando comprobante ARCA:', err);
+      toast.showError(err.message || 'No se pudo obtener la autorización de ARCA.');
+    } finally {
+      setIsAuthorizingArca(false);
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    // Una factura ya autorizada no cambia sus datos fiscales: solo estado de cobro y observaciones.
+    const facturaData = facturaAutorizada
+      ? { ...facturaAutorizada, estado: formEstado, observaciones: formObservaciones }
+      : buildFacturaData();
 
     onSaveFactura(facturaData);
-    toast.showSuccess(`Comprobante ${facturaData.numeroFactura} guardado con éxito.`);
+    if (estadoFiscalFactura(facturaData) === 'sin_validez') {
+      toast.showInfo(`Comprobante ${facturaData.numeroFactura} guardado como borrador interno (sin CAE de ARCA, no tiene validez fiscal).`);
+    } else {
+      toast.showSuccess(`Comprobante ${facturaData.numeroFactura} guardado.`);
+    }
     setIsModalOpen(false);
   };
 
@@ -377,7 +442,7 @@ export const FacturasView = ({
   };
 
   // Validación rápida de CUIT del receptor si aplica
-  const cuitVal = formPacienteDni && formPacienteDni.length >= 10 ? validarCuit(formPacienteDni) : null;
+  const cuitVal = String(formPacienteDni || '').replace(/\D/g, '').length === 11 ? validarCuit(formPacienteDni) : null;
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -564,12 +629,15 @@ export const FacturasView = ({
                           </span>
                           <span className="font-semibold text-slate-800 dark:text-slate-200">{factura.numeroFactura}</span>
                         </div>
-                        {factura.cae && (
-                          <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-sans flex items-center gap-1">
-                            <CheckCircle2 size={10} />
-                            <span>CAE: {factura.cae}</span>
-                          </div>
-                        )}
+                        {(() => {
+                          const ef = ETIQUETA_FISCAL[estadoFiscalFactura(factura)];
+                          return (
+                            <div className={`text-[11px] mt-0.5 font-sans flex items-center gap-1 ${ef.clase}`}>
+                              {estadoFiscalFactura(factura) === 'valida' ? <CheckCircle2 size={10} /> : <Clock size={10} />}
+                              <span>{factura.cae && factura.arcaAutorizado ? `CAE ${factura.cae} · ` : ''}{ef.texto}</span>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Fecha */}
@@ -753,7 +821,7 @@ export const FacturasView = ({
                   >
                     <option value="Factura C">Factura C (Monotributo - Cód 011)</option>
                     <option value="Recibo de Honorarios">Recibo C (Honorarios - Cód 015)</option>
-                    <option value="Factura B">Factura B (Resp. Inscripto - Cód 006)</option>
+                    <option value="Factura B">Factura B (Resp. Inscripto - Cód 006 · sin conexión ARCA todavía)</option>
                   </select>
                 </div>
 
@@ -767,8 +835,12 @@ export const FacturasView = ({
                     onChange={(e) => setFormNumeroFactura(e.target.value)}
                     placeholder="0001-00000146"
                     className="input-field text-xs font-mono font-semibold"
+                    readOnly={Boolean(arcaAutorizacion)}
                     required
                   />
+                  <span className="text-[11px] text-slate-400">
+                    {arcaAutorizacion ? 'Número asignado por ARCA' : 'ARCA asigna el número definitivo al autorizar'}
+                  </span>
                 </div>
 
                 <div>
@@ -1067,13 +1139,19 @@ export const FacturasView = ({
                   <button
                     type="button"
                     onClick={handleAuthorizeArca}
-                    disabled={isAuthorizingArca}
+                    disabled={isAuthorizingArca || Boolean(arcaAutorizacion)}
                     className="px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-[#f4f1e8] font-semibold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1"
                   >
                     <RefreshCw size={12} className={isAuthorizingArca ? 'animate-spin' : ''} />
-                    <span>{isAuthorizingArca ? 'Autorizando en ARCA...' : 'Solicitar CAE a ARCA'}</span>
+                    <span>{arcaAutorizacion ? 'Autorizada' : isAuthorizingArca ? 'Autorizando en ARCA...' : 'Solicitar CAE a ARCA'}</span>
                   </button>
                 </div>
+
+                <p className={`text-[11px] ${config.ambienteArca === 'produccion' ? 'text-slate-400' : 'text-amber-300'}`}>
+                  {config.ambienteArca === 'produccion'
+                    ? 'Producción: el comprobante queda registrado en ARCA con validez fiscal y no se puede borrar (solo anular con nota de crédito).'
+                    : 'Homologación: ARCA autoriza en su ambiente de pruebas. El CAE no tiene validez fiscal. Cambialo a Producción en Configuración cuando estés listo/a.'}
+                </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                   <div>
@@ -1083,8 +1161,8 @@ export const FacturasView = ({
                     <input
                       type="text"
                       value={formCae}
-                      onChange={(e) => setFormCae(e.target.value)}
-                      placeholder="75392019482910"
+                      readOnly
+                      placeholder="Lo asigna ARCA al autorizar"
                       className="input-field text-xs font-mono font-semibold bg-slate-950 text-emerald-400 border-emerald-900/60"
                     />
                   </div>
@@ -1096,7 +1174,7 @@ export const FacturasView = ({
                     <input
                       type="date"
                       value={formVencimientoCae}
-                      onChange={(e) => setFormVencimientoCae(e.target.value)}
+                      readOnly
                       className="input-field text-xs bg-slate-950 text-slate-200 border-emerald-900/60"
                     />
                   </div>
@@ -1130,7 +1208,7 @@ export const FacturasView = ({
                   className="btn btn-primary text-xs py-2 px-4 font-semibold flex items-center gap-1.5"
                 >
                   <Check size={14} />
-                  <span>Guardar y Emitir Comprobante</span>
+                  <span>{arcaAutorizacion ? 'Guardar cambios' : 'Guardar como borrador (sin CAE)'}</span>
                 </button>
               </div>
 

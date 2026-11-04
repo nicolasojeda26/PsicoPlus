@@ -22,7 +22,17 @@ const STORAGE_KEYS = {
 export const getStoredData = () => {
   try {
     const sedes = JSON.parse(localStorage.getItem(STORAGE_KEYS.SEDES)) || INITIAL_SEDES;
-    const obrasSociales = JSON.parse(localStorage.getItem(STORAGE_KEYS.OBRAS_SOCIALES)) || INITIAL_OBRAS_SOCIALES;
+    const obrasGuardadas = JSON.parse(localStorage.getItem(STORAGE_KEYS.OBRAS_SOCIALES));
+    // Suma al catálogo guardado las obras sociales nuevas, sin tocar los aranceles ya cargados.
+    const obrasSociales = obrasGuardadas
+      ? [
+          ...obrasGuardadas.filter(os => os.id !== 'particular'),
+          ...INITIAL_OBRAS_SOCIALES.filter(os => os.id !== 'particular' && !obrasGuardadas.some(g => g.id === os.id)),
+          ...(obrasGuardadas.filter(os => os.id === 'particular').length
+            ? obrasGuardadas.filter(os => os.id === 'particular')
+            : INITIAL_OBRAS_SOCIALES.filter(os => os.id === 'particular')),
+        ]
+      : INITIAL_OBRAS_SOCIALES;
     const pacientes = JSON.parse(localStorage.getItem(STORAGE_KEYS.PACIENTES)) || INITIAL_PACIENTES;
     const turnos = JSON.parse(localStorage.getItem(STORAGE_KEYS.TURNOS)) || INITIAL_TURNOS;
     const liquidaciones = JSON.parse(localStorage.getItem(STORAGE_KEYS.LIQUIDACIONES)) || INITIAL_LIQUIDACIONES;

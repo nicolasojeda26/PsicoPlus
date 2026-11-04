@@ -88,6 +88,83 @@ export const INITIAL_OBRAS_SOCIALES = [
     notasConvenio: 'Carga mensual de planillas en extranet prestadores.',
   },
   {
+    id: 'galeno',
+    nombre: 'Galeno',
+    sigla: 'GALENO',
+    tipo: 'Prepaga',
+    arancelSesion: 0, // completar en Liquidaciones → Aranceles
+    coseguroRecomendado: 0,
+    sesionesPorOrdenDefault: 10,
+    plazoCobroDias: 45,
+    notasConvenio: 'Cargá el arancel de tu convenio antes de liquidar.',
+  },
+  {
+    id: 'pami',
+    nombre: 'PAMI (INSSJP)',
+    sigla: 'PAMI',
+    tipo: 'Obra Social Nacional',
+    arancelSesion: 0, // completar en Liquidaciones → Aranceles
+    coseguroRecomendado: 0,
+    sesionesPorOrdenDefault: 10,
+    plazoCobroDias: 45,
+    notasConvenio: 'Cargá el arancel de tu convenio antes de liquidar.',
+  },
+  {
+    id: 'ioma',
+    nombre: 'IOMA',
+    sigla: 'IOMA',
+    tipo: 'Obra Social Provincial',
+    arancelSesion: 0, // completar en Liquidaciones → Aranceles
+    coseguroRecomendado: 0,
+    sesionesPorOrdenDefault: 10,
+    plazoCobroDias: 45,
+    notasConvenio: 'Cargá el arancel de tu convenio antes de liquidar.',
+  },
+  {
+    id: 'osecac',
+    nombre: 'OSECAC',
+    sigla: 'OSECAC',
+    tipo: 'Obra Social Sindical',
+    arancelSesion: 0, // completar en Liquidaciones → Aranceles
+    coseguroRecomendado: 0,
+    sesionesPorOrdenDefault: 10,
+    plazoCobroDias: 45,
+    notasConvenio: 'Cargá el arancel de tu convenio antes de liquidar.',
+  },
+  {
+    id: 'union-personal',
+    nombre: 'Unión Personal / Accord Salud',
+    sigla: 'ACCORD SALUD',
+    tipo: 'Obra Social / Prepaga',
+    arancelSesion: 0, // completar en Liquidaciones → Aranceles
+    coseguroRecomendado: 0,
+    sesionesPorOrdenDefault: 10,
+    plazoCobroDias: 45,
+    notasConvenio: 'Cargá el arancel de tu convenio antes de liquidar.',
+  },
+  {
+    id: 'omint',
+    nombre: 'OMINT',
+    sigla: 'OMINT',
+    tipo: 'Prepaga',
+    arancelSesion: 0, // completar en Liquidaciones → Aranceles
+    coseguroRecomendado: 0,
+    sesionesPorOrdenDefault: 10,
+    plazoCobroDias: 45,
+    notasConvenio: 'Cargá el arancel de tu convenio antes de liquidar.',
+  },
+  {
+    id: 'prevencion-salud',
+    nombre: 'Prevención Salud',
+    sigla: 'PREVENCIÓN SALUD',
+    tipo: 'Prepaga',
+    arancelSesion: 0, // completar en Liquidaciones → Aranceles
+    coseguroRecomendado: 0,
+    sesionesPorOrdenDefault: 10,
+    plazoCobroDias: 45,
+    notasConvenio: 'Cargá el arancel de tu convenio antes de liquidar.',
+  },
+  {
     id: 'particular',
     nombre: 'Particular (Sin cobertura)',
     sigla: 'PARTICULAR',

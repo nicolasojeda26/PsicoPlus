@@ -29,6 +29,19 @@ import { exportFullBackup, resetToDemoData } from '../../services/storage';
 import { ProBadge } from '../Common/ProBadge';
 import { PLANS, PLAN_LIMITS, activatePromoCode, switchPlanDirectly } from '../../services/subscription';
 import { validarCuit } from '../../services/arcaService';
+import {
+  probarConexionArca,
+  getArcaCredenciales,
+  saveArcaCredenciales,
+  borrarArcaCredenciales,
+} from '../../services/arcaClient';
+
+const leerArchivoTexto = (file) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(String(r.result || ''));
+  r.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+  r.readAsText(file);
+});
 import { isConsultorioLocked, lockConsultorio, setConsultorioPin } from '../../services/securityService';
 import { useToast } from '../Common/Toast';
 
@@ -56,27 +69,79 @@ export const ConfiguracionView = ({
   const [promoMsg, setPromoMsg] = useState({ text: '', type: '' });
   const [isTestingArca, setIsTestingArca] = useState(false);
   const [arcaStatus, setArcaStatus] = useState(null);
+  const [arcaCred, setArcaCred] = useState(() => getArcaCredenciales());
+  const [certPendiente, setCertPendiente] = useState('');
+  const [keyPendiente, setKeyPendiente] = useState('');
   const [consultorioPinInput, setConsultorioPinInput] = useState('');
   const toast = useToast();
 
   const isPro = subscription.plan === PLANS.PRO;
 
+  const handleArchivoArca = async (e, tipo) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const txt = await leerArchivoTexto(file);
+      if (!txt.includes('-----BEGIN')) {
+        toast.showError(`El archivo ${file.name} no parece un ${tipo === 'cert' ? 'certificado' : 'archivo de clave'} en formato PEM.`);
+        return;
+      }
+      if (tipo === 'key' && txt.includes('ENCRYPTED')) {
+        toast.showError('La clave tiene contraseña. Usá la clave sin contraseña con la que generaste el pedido (.csr).');
+        return;
+      }
+      if (tipo === 'cert') setCertPendiente(txt); else setKeyPendiente(txt);
+    } catch (err) {
+      toast.showError(err.message);
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleGuardarCredenciales = () => {
+    const cert = certPendiente || arcaCred?.cert;
+    const key = keyPendiente || arcaCred?.key;
+    if (!cert || !key) {
+      toast.showError('Cargá los dos archivos: el certificado (.crt) y la clave privada (.key).');
+      return;
+    }
+    saveArcaCredenciales({ cert, key });
+    setArcaCred(getArcaCredenciales());
+    setCertPendiente('');
+    setKeyPendiente('');
+    setArcaStatus(null);
+    toast.showSuccess('Certificado guardado en este dispositivo. Ahora probá la conexión.');
+  };
+
+  const handleBorrarCredenciales = () => {
+    if (!confirm('¿Borrar el certificado y la clave de ARCA de este dispositivo?')) return;
+    borrarArcaCredenciales();
+    setArcaCred(null);
+    setArcaStatus(null);
+    toast.showInfo('Certificado eliminado de este dispositivo.');
+  };
+
   const handleTestArcaConnection = async () => {
     setIsTestingArca(true);
     setArcaStatus(null);
-    const val = validarCuit(formData.cuit);
-    await new Promise(r => setTimeout(r, 600));
-    if (!val.valido) {
-      setArcaStatus({ ok: false, msg: `CUIT inválido: ${val.error}` });
-      toast.showError('El CUIT ingresado no supera la validación fiscal oficial.');
-    } else {
-      setArcaStatus({ 
-        ok: true, 
-        msg: `Servidores de ARCA (ex-AFIP) WSFEv1 Operativos. Punto de Venta ${formData.puntoVenta || '0001'} habilitado para emisión con CAE y QR.` 
-      });
-      toast.showSuccess('¡Conexión fiscal con ARCA verificada exitosamente!');
+    try {
+      const r = await probarConexionArca(formData);
+      const entorno = r.ambiente === 'produccion' ? 'Producción' : 'Homologación';
+      const lista = r.puntosVenta.length ? r.puntosVenta.map((p) => p.numero).join(', ') : 'ninguno';
+      if (r.puntoVentaOk) {
+        setArcaStatus({ ok: true, msg: `Conectado a ARCA (${entorno}). Certificado válido y punto de venta ${formData.puntoVenta} habilitado.` });
+        toast.showSuccess('Conexión con ARCA verificada.');
+      } else {
+        setArcaStatus({
+          ok: false,
+          msg: `Conectado a ARCA (${entorno}) y el certificado funciona, pero el punto de venta ${formData.puntoVenta} no figura habilitado para web services. Puntos de venta encontrados: ${lista}.${r.ambiente === 'homologacion' ? ' En homologación ARCA no siempre lista puntos de venta: podés probar emitir igual.' : ''}`,
+        });
+      }
+    } catch (err) {
+      setArcaStatus({ ok: false, msg: err.message || 'No se pudo conectar con ARCA.' });
+    } finally {
+      setIsTestingArca(false);
     }
-    setIsTestingArca(false);
   };
 
   const handleSetLockPin = (e) => {
@@ -320,6 +385,9 @@ export const ConfiguracionView = ({
                 onChange={(e) => setFormData({ ...formData, cuit: e.target.value })}
                 className="input-field font-mono"
               />
+              {formData.cuit && !validarCuit(formData.cuit).valido && (
+                <span className="text-[11px] text-rose-600 dark:text-rose-400">CUIT inválido: revisalo antes de facturar.</span>
+              )}
             </div>
 
             <div>
@@ -384,12 +452,54 @@ export const ConfiguracionView = ({
               className="text-xs text-teal-600 dark:text-teal-400 font-semibold hover:underline flex items-center gap-1.5 self-start sm:self-auto"
             >
               <RefreshCw size={13} className={isTestingArca ? 'animate-spin' : ''} />
-              <span>{isTestingArca ? 'Verificando ARCA...' : 'Probar Conectividad WSFE'}</span>
+              <span>{isTestingArca ? 'Conectando con ARCA...' : 'Probar conexión con ARCA'}</span>
             </button>
           </div>
 
           <p className="text-xs text-slate-500">
-            Configuración del Punto de Venta y entorno habilitado en ARCA para la emisión electrónica legal de Facturas C, B y Recibos con código QR (RG 4291) válidos ante Obras Sociales.
+            PsicoPlus pide el CAE directamente a ARCA con tu certificado digital. Por ahora emite Factura C y Recibo C (monotributistas y exentos). Guardá primero el CUIT y el punto de venta, después cargá el certificado y probá la conexión.
+          </p>
+
+          <details className="text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3">
+            <summary className="font-semibold cursor-pointer">Cómo obtener tu certificado de ARCA (paso a paso)</summary>
+            <ol className="list-decimal pl-5 mt-2 space-y-1">
+              <li>Generá una clave y un pedido en tu computadora: <code className="font-mono">openssl genrsa -out psicoplus.key 2048</code> y <code className="font-mono">openssl req -new -key psicoplus.key -subj "/C=AR/O=TuNombre/CN=psicoplus/serialNumber=CUIT 20XXXXXXXXX" -out psicoplus.csr</code></li>
+              <li>Para <b>pruebas</b>: en ARCA entrá al servicio "WSASS - Autogestión Certificados Homologación", pegá el .csr, descargá el certificado y autorizalo para "wsfe".</li>
+              <li>Para <b>facturar en serio</b>: servicio "Administración de Certificados Digitales" con el mismo .csr; después, en "Administrador de Relaciones de Clave Fiscal", asociá el certificado al servicio "Facturación Electrónica".</li>
+              <li>Creá un punto de venta tipo "Factura Electrónica - Monotributo - Web Services" en "Administración de puntos de venta y domicilios". No sirve el de "Comprobantes en línea".</li>
+              <li>Cargá acá el certificado (.crt) y la clave (.key), elegí el entorno y probá la conexión.</li>
+            </ol>
+          </details>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Certificado ARCA (.crt / .pem)</label>
+              <input type="file" accept=".crt,.pem,.cer,.txt" onChange={(e) => handleArchivoArca(e, 'cert')} className="block w-full text-xs" />
+              <span className="text-[11px] text-slate-400">
+                {certPendiente ? 'Certificado listo para guardar' : arcaCred?.cert ? 'Certificado cargado en este dispositivo' : 'Sin certificado'}
+              </span>
+            </div>
+            <div>
+              <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Clave privada (.key)</label>
+              <input type="file" accept=".key,.pem,.txt" onChange={(e) => handleArchivoArca(e, 'key')} className="block w-full text-xs" />
+              <span className="text-[11px] text-slate-400">
+                {keyPendiente ? 'Clave lista para guardar' : arcaCred?.key ? 'Clave cargada en este dispositivo' : 'Sin clave'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={handleGuardarCredenciales} disabled={!certPendiente && !keyPendiente} className="btn btn-secondary text-xs">
+              Guardar certificado
+            </button>
+            {arcaCred?.cert && (
+              <button type="button" onClick={handleBorrarCredenciales} className="text-xs text-rose-600 dark:text-rose-400 font-semibold hover:underline">
+                Borrar certificado de este dispositivo
+              </button>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-400">
+            El certificado y la clave quedan solo en este navegador; el servidor de PsicoPlus los usa para firmar el pedido a ARCA y no los guarda. No los cargues en una computadora compartida.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -403,7 +513,7 @@ export const ConfiguracionView = ({
                 placeholder="0001"
                 required
               />
-              <span className="text-[11px] text-slate-400">P.V. habilitado para WebServices</span>
+              <span className="text-[11px] text-slate-400">Punto de venta de tipo Web Services</span>
             </div>
 
             <div>

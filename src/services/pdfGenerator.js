@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import { generarQrArcaDataUrl, generarCodigoBarrasFiscal } from './arcaService';
+import { generarQrArcaDataUrl, codigoTipoComprobante, partesNumeroComprobante, estadoFiscalFactura } from './arcaService';
 
 export const generateConstanciaPDF = ({ paciente, turno, config, sede }) => {
   const doc = new jsPDF({
@@ -32,7 +32,7 @@ export const generateConstanciaPDF = ({ paciente, turno, config, sede }) => {
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...grayColor);
   doc.text(`${config.titulo || 'Licenciada en Psicología'} | ${config.matriculaProvincial || 'M.P. 1842'}`, 20, 44);
-  doc.text(`${config.colegio || 'Colegio de Psicólogos de Corrientes'} | CUIT: ${config.cuit || '27-38452190-4'}`, 20, 49);
+  doc.text(`${config.colegio || 'Colegio de Psicólogos de Corrientes'} | CUIT: ${config.cuit || 'S/D'}`, 20, 49);
   doc.text(`Contacto: ${config.telefono || ''} | ${config.email || ''}`, 20, 54);
 
   // Divider
@@ -80,7 +80,7 @@ export const generateConstanciaPDF = ({ paciente, turno, config, sede }) => {
   doc.save(`Constancia_${paciente.nombreCompleto.replace(/\s+/g, '_')}_${turno?.fecha || 'sesion'}.pdf`);
 };
 
-export const generatePlanillaLiquidacionPDF = ({ obraSocial, periodo, pacientes, config, liquidacion }) => {
+export const generatePlanillaLiquidacionPDF = ({ obraSocial, periodo, pacientes, detalle, config }) => {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -127,8 +127,14 @@ export const generatePlanillaLiquidacionPDF = ({ obraSocial, periodo, pacientes,
   let totalSesiones = 0;
   let totalMonto = 0;
 
-  pacientes.forEach((p, idx) => {
-    const ses = p.sesionesConsumidas || 1;
+  // Filas: el detalle guardado con la liquidación (sesiones atendidas del mes).
+  // Las liquidaciones viejas, sin detalle, usan el contador manual de cada paciente.
+  const filas = detalle?.length
+    ? detalle.map(d => ({ nombreCompleto: d.nombre, dni: d.dni, numeroAfiliado: d.numeroAfiliado, numeroOrden: d.numeroOrden, sesiones: d.sesiones }))
+    : pacientes.map(p => ({ ...p, sesiones: p.sesionesConsumidas || 0 })).filter(p => p.sesiones > 0);
+
+  filas.forEach((p, idx) => {
+    const ses = p.sesiones;
     const monto = ses * obraSocial.arancelSesion;
     totalSesiones += ses;
     totalMonto += monto;
@@ -138,7 +144,7 @@ export const generatePlanillaLiquidacionPDF = ({ obraSocial, periodo, pacientes,
       doc.rect(20, y - 4, 170, 7, 'F');
     }
 
-    doc.text(p.nombreCompleto.substring(0, 22), 23, y);
+    doc.text(String(p.nombreCompleto || '').substring(0, 22), 23, y);
     doc.text(p.dni || '-', 65, y);
     doc.text(`${p.numeroAfiliado || '-'} (${p.numeroOrden || '-'})`.substring(0, 24), 95, y);
     doc.text(ses.toString(), 145, y);
@@ -170,10 +176,12 @@ export const generateFacturaPDF = async ({ factura = {}, config = {}, paciente =
     format: 'a4',
   });
 
-  const isFacturaC = factura.tipoComprobante?.includes('Factura C');
-  const isFacturaB = factura.tipoComprobante?.includes('Factura B');
-  const letra = isFacturaC ? 'C' : isFacturaB ? 'B' : 'C';
-  const codigoComprobante = isFacturaC ? 'COD. 011' : isFacturaB ? 'COD. 006' : 'COD. 015';
+  const tipoCodigo = factura.tipoComprobanteCodigo || codigoTipoComprobante(factura.tipoComprobante);
+  const letra = tipoCodigo === 6 ? 'B' : 'C';
+  const codigoComprobante = `COD. ${String(tipoCodigo).padStart(3, '0')}`;
+  const estadoFiscal = estadoFiscalFactura(factura);
+  const cuitEmisor = factura.cuitEmisor || config.cuit || '';
+  const numeracion = partesNumeroComprobante(factura.numeroFactura, factura.puntoVenta || config.puntoVenta);
 
   // Marco exterior
   doc.setDrawColor(13, 148, 136); // Teal / Emerald
@@ -224,16 +232,16 @@ export const generateFacturaPDF = async ({ factura = {}, config = {}, paciente =
 
   doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42);
-  const ptoVta = String(config.puntoVenta || '0001').padStart(4, '0');
-  const nroComp = String(factura.numeroFactura || '00000001').replace(/^0+/, '').padStart(8, '0');
+  const ptoVta = String(numeracion.puntoVenta).padStart(4, '0');
+  const nroComp = String(numeracion.numero).padStart(8, '0');
   doc.text(`Punto de Venta: ${ptoVta}   Comp. Nro: ${nroComp}`, 115, 28);
   doc.text(`Fecha de Emisión: ${factura.fechaEmision || new Date().toISOString().split('T')[0]}`, 115, 34);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
-  doc.text(`CUIT Emisor: ${config.cuit || '27-38452190-4'}`, 115, 40);
-  doc.text(`Ingresos Brutos: ${config.ingresosBrutos || config.cuit || '27-38452190-4'}`, 115, 45);
+  doc.text(`CUIT Emisor: ${cuitEmisor || 'SIN CONFIGURAR'}`, 115, 40);
+  doc.text(`Ingresos Brutos: ${config.ingresosBrutos || config.cuit || 'S/D'}`, 115, 45);
   doc.text(`Fecha de Inicio de Actividades: ${config.inicioActividades || '15/03/2019'}`, 115, 50);
 
   // Período de Prestación de Servicios (Exigido por ARCA para Servicios de Salud)
@@ -348,7 +356,7 @@ export const generateFacturaPDF = async ({ factura = {}, config = {}, paciente =
 
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  const obsTexto = factura.observaciones || 'Comprobante oficial válido ante Obras Sociales y Empresas de Medicina Prepaga para reintegro de prestaciones de salud mental (Leyes 23.660 / 23.661 y RG 4291 ARCA).';
+  const obsTexto = factura.observaciones || 'Prestaciones de salud mental.';
   const obsSplits = doc.splitTextToSize(`Observaciones: ${obsTexto}`, 174);
   doc.text(obsSplits, 18, currentY);
 
@@ -384,13 +392,14 @@ export const generateFacturaPDF = async ({ factura = {}, config = {}, paciente =
 
   // Generar Código QR Oficial de ARCA
   try {
-    const qrDataUrl = await generarQrArcaDataUrl({
-      cuitEmisor: config?.cuit || '27-38452190-4',
-      puntoVenta: config?.puntoVenta || 1,
-      tipoComprobante: isFacturaC ? 11 : isFacturaB ? 6 : 15,
-      numeroComprobante: factura?.numeroFactura || 1,
+    const qrDataUrl = estadoFiscal === 'sin_validez' ? null : await generarQrArcaDataUrl({
+      cuitEmisor,
+      puntoVenta: numeracion.puntoVenta,
+      tipoComprobante: tipoCodigo,
+      numeroComprobante: factura?.numeroFactura,
       importe: factura?.total || 0,
       fechaEmision: factura?.fechaEmision,
+      tipoDocReceptor: factura?.docTipoReceptor,
       nroDocReceptor: factura?.pacienteDni,
       cae: factura?.cae
     });
@@ -412,21 +421,32 @@ export const generateFacturaPDF = async ({ factura = {}, config = {}, paciente =
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(71, 85, 105);
   doc.text('Agencia de Recaudación y Control Aduanero', 54, caeY + 13);
-  doc.text('Comprobante Electrónico Autorizado', 54, caeY + 17);
+  doc.text(estadoFiscal === 'valida' ? 'Comprobante Autorizado' : estadoFiscal === 'prueba' ? 'Autorizado en homologación (prueba)' : 'Comprobante NO autorizado por ARCA', 54, caeY + 17);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42);
-  if (factura?.cae) {
+  if (estadoFiscal !== 'sin_validez') {
     doc.text(`CAE Nº: ${factura.cae}`, 54, caeY + 24);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-    doc.text(`Fecha de Vencimiento de CAE: ${factura.vencimientoCae || '10 días posteriores a emisión'}`, 54, caeY + 29);
+    doc.text(`Fecha de Vto. de CAE: ${factura.vencimientoCae || '-'}`, 54, caeY + 29);
   } else {
-    doc.text(`CAE Nº: 75${Math.floor(100000000000 + Math.random() * 900000000000)}`, 54, caeY + 24);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.text(`Fecha de Vencimiento de CAE: ${new Date(Date.now() + 10 * 86400000).toISOString().split('T')[0]}`, 54, caeY + 29);
+    doc.text('CAE Nº: -', 54, caeY + 24);
+  }
+
+  // Marca de agua cuando el comprobante no tiene validez fiscal
+  if (estadoFiscal !== 'valida') {
+    doc.setTextColor(220, 38, 38);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text(
+      estadoFiscal === 'prueba'
+        ? 'COMPROBANTE DE PRUEBA (HOMOLOGACIÓN ARCA) · SIN VALIDEZ FISCAL'
+        : 'DOCUMENTO NO VÁLIDO COMO FACTURA · SIN CAE DE ARCA',
+      105, caeY - 3, { align: 'center' }
+    );
+    doc.setTextColor(15, 23, 42);
   }
 
   // Firma y Matrícula Profesional (Derecha)
@@ -442,31 +462,10 @@ export const generateFacturaPDF = async ({ factura = {}, config = {}, paciente =
   doc.text(config?.matriculaProvincial || 'M.P. 1842', 164, caeY + 30, { align: 'center' });
   doc.text(config?.colegio || 'Colegio de Psicólogos', 164, caeY + 34, { align: 'center' });
 
-  // Código de barras fiscal de 40 dígitos en la parte inferior
-  let codigoBarras = '';
-  try {
-    codigoBarras = generarCodigoBarrasFiscal({
-      cuitEmisor: config?.cuit,
-      tipoComprobante: isFacturaC ? 11 : isFacturaB ? 6 : 15,
-      puntoVenta: config?.puntoVenta || 1,
-      cae: factura?.cae,
-      fechaVencimientoCae: factura?.vencimientoCae
-    });
-  } catch (barErr) {
-    console.warn('No se pudo generar código de barras fiscal:', barErr);
-  }
-
-  if (codigoBarras) {
-    doc.setFont('courier', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(51, 65, 85);
-    doc.text(`||||| ||| |||| ||||| |||| ||| |||||   ${codigoBarras}`, 105, 274, { align: 'center' });
-  }
-
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.setTextColor(148, 163, 184);
-  doc.text('Comprobante emitido con PsicoPlus PRO • Cumple RG 4291 ARCA (ex-AFIP) y Normativa de Salud Mental', 105, 279, { align: 'center' });
+  doc.text('Comprobante generado con PsicoPlus', 105, 279, { align: 'center' });
 
   const safeNumero = String(factura?.numeroFactura || '0001').replace(/[^a-zA-Z0-9_-]/g, '_');
   const safePaciente = String(factura?.pacienteNombre || 'Paciente').replace(/[^a-zA-Z0-9_-]/g, '_');

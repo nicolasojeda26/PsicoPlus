@@ -32,8 +32,13 @@
   ],
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/arca.js": {
+      "maxDuration": 30
+    }
+  }
 }

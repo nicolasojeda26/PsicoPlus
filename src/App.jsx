@@ -173,6 +173,11 @@ export function AppContent() {
   };
 
   // Persist state updates to localStorage
+  const handleSaveObrasSociales = (nuevas) => {
+    setObrasSociales(nuevas);
+    saveToStorage('psicoplus_obras_sociales_v1', nuevas);
+  };
+
   const handleSaveSedes = (newSedes) => {
     setSedes(newSedes);
     saveToStorage('psicoplus_sedes_v1', newSedes);
@@ -285,9 +290,12 @@ export function AppContent() {
   };
 
   const handleSaveLiquidacion = (nuevaLiq) => {
-    const updated = [nuevaLiq, ...liquidaciones];
-    setLiquidaciones(updated);
-    saveToStorage('psicoplus_liquidaciones_v1', updated);
+    // Actualización funcional: la liquidación masiva guarda varias seguidas sin pisarse.
+    setLiquidaciones(prev => {
+      const updated = [nuevaLiq, ...prev];
+      saveToStorage('psicoplus_liquidaciones_v1', updated);
+      return updated;
+    });
   };
 
   const handleUpdateLiquidacionEstado = (liqId, nuevoEstado) => {
@@ -368,6 +376,7 @@ export function AppContent() {
         <AuthModal
           isOpen={isAuthModalOpen}
           onClose={() => setIsAuthModalOpen(false)}
+          key={`${authModalMode}-${isAuthModalOpen}`}
           initialMode={authModalMode}
           onAuthSuccess={handleAuthSuccess}
         />
@@ -519,8 +528,10 @@ export function AppContent() {
             <LiquidacionesView 
               obrasSociales={obrasSociales}
               pacientes={pacientes}
+              turnos={turnos}
               liquidaciones={liquidaciones}
               config={config}
+              onSaveObrasSociales={handleSaveObrasSociales}
               onSaveLiquidacion={handleSaveLiquidacion}
               onUpdateLiquidacionEstado={handleUpdateLiquidacionEstado}
               onDeleteLiquidacion={handleDeleteLiquidacion}
@@ -617,7 +628,8 @@ export function AppContent() {
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
-        initialMode={authModalMode}
+        key={`${authModalMode}-${isAuthModalOpen}`}
+          initialMode={authModalMode}
         onAuthSuccess={handleAuthSuccess}
       />
 

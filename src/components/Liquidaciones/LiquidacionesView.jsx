@@ -14,15 +14,23 @@ import {
   Award,
   Trash2
 } from 'lucide-react';
-import { periodoLabel } from '../../lib/dates';
 import { generatePlanillaLiquidacionPDF } from '../../services/pdfGenerator';
+import { armarLiquidacion, sesionesDelPeriodo, mesALabel } from '../../lib/liquidaciones';
+import { useToast } from '../Common/Toast';
+
+const mesActual = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
 
 import { ProBadge } from '../Common/ProBadge';
 
 export const LiquidacionesView = ({
   obrasSociales,
   pacientes,
+  turnos = [],
   liquidaciones,
+  onSaveObrasSociales,
   config,
   onSaveLiquidacion,
   onUpdateLiquidacionEstado,
@@ -32,8 +40,11 @@ export const LiquidacionesView = ({
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOSId, setSelectedOSId] = useState('ioscor');
-  const [periodo, setPeriodo] = useState(periodoLabel());
+  const [mes, setMes] = useState(mesActual());
   const [observaciones, setObservaciones] = useState('');
+  const [isArancelesOpen, setIsArancelesOpen] = useState(false);
+  const [arancelesDraft, setArancelesDraft] = useState([]);
+  const toast = useToast();
 
   // Estadísticas rápidas de liquidaciones
   const totalPresentado = liquidaciones
@@ -46,29 +57,58 @@ export const LiquidacionesView = ({
 
   const getObraSocialById = (id) => obrasSociales.find(os => os.id === id);
 
+  const previewLiq = (() => {
+    const os = getObraSocialById(selectedOSId);
+    if (!os) return null;
+    const { detalle, totalSesiones } = sesionesDelPeriodo({ turnos, pacientes, obraSocialId: os.id, mes });
+    return { os, pacientes: detalle.length, totalSesiones, monto: totalSesiones * (os.arancelSesion || 0) };
+  })();
+
   const handleCrearPlanilla = (e) => {
     e.preventDefault();
-    const os = getObraSocialById(selectedOSId);
-    if (!os) return;
-
-    // Obtener pacientes con esta obra social
-    const pacsOS = pacientes.filter(p => p.obraSocialId === selectedOSId);
-    const cantSesiones = pacsOS.reduce((acc, curr) => acc + (curr.sesionesConsumidas || 1), 0);
-    const montoTotal = cantSesiones * os.arancelSesion;
-
-    const nuevaLiq = {
-      id: `liq-${Date.now()}`,
-      obraSocialId: selectedOSId,
-      periodo: periodo,
-      fechaPresentacion: new Date().toISOString().split('T')[0],
-      cantidadSesiones: cantSesiones,
-      montoBruto: montoTotal,
-      estado: 'Presentada',
-      observaciones: observaciones || `Presentación de ${periodo} para ${os.nombre}.`,
-    };
-
-    onSaveLiquidacion(nuevaLiq);
+    const res = armarLiquidacion({
+      obraSocial: getObraSocialById(selectedOSId), turnos, pacientes, liquidaciones, mes, observaciones,
+    });
+    if (res.error) {
+      toast.showError(res.error);
+      return;
+    }
+    onSaveLiquidacion(res.liquidacion);
+    toast.showSuccess(`Liquidación de ${res.liquidacion.periodo} registrada: ${res.liquidacion.cantidadSesiones} sesiones.`);
+    setObservaciones('');
     setIsModalOpen(false);
+  };
+
+  const handleLiquidacionMasiva = () => {
+    const creadas = [];
+    const omitidas = [];
+    obrasSociales.filter(os => os.id !== 'particular').forEach((os, i) => {
+      const res = armarLiquidacion({
+        obraSocial: os, turnos, pacientes, liquidaciones, mes,
+        observaciones: `Lote automático generado para ${os.nombre}.`, idSufijo: `-${i}`,
+      });
+      if (res.liquidacion) {
+        onSaveLiquidacion(res.liquidacion);
+        creadas.push(os.sigla || os.nombre);
+      } else if (!/No hay turnos/.test(res.error)) {
+        omitidas.push(res.error);
+      }
+    });
+    if (creadas.length) toast.showSuccess(`Liquidaciones de ${mesALabel(mes)} creadas: ${creadas.join(', ')}.`);
+    else toast.showInfo(`No hay sesiones atendidas nuevas para liquidar en ${mesALabel(mes)}.`);
+    if (omitidas.length) toast.showError(omitidas.join(' '));
+  };
+
+  const handleAbrirAranceles = () => {
+    setArancelesDraft(obrasSociales.map(os => ({ ...os })));
+    setIsArancelesOpen(true);
+  };
+
+  const handleGuardarAranceles = (e) => {
+    e.preventDefault();
+    if (onSaveObrasSociales) onSaveObrasSociales(arancelesDraft);
+    toast.showSuccess('Aranceles actualizados. Las liquidaciones ya generadas conservan el arancel con el que se hicieron.');
+    setIsArancelesOpen(false);
   };
 
   const handleDescargarPDF = (liq) => {
@@ -76,9 +116,10 @@ export const LiquidacionesView = ({
     if (!os) return;
     const pacsOS = pacientes.filter(p => p.obraSocialId === liq.obraSocialId);
     generatePlanillaLiquidacionPDF({
-      obraSocial: os,
+      obraSocial: { ...os, arancelSesion: liq.arancelSesion || os.arancelSesion },
       periodo: liq.periodo,
       pacientes: pacsOS,
+      detalle: liq.detalle,
       config,
       liquidacion: liq
     });
@@ -114,29 +155,20 @@ export const LiquidacionesView = ({
                 }
                 return;
               }
-              // Generate bulk
-              obrasSociales.filter(os => os.id !== 'particular').forEach(os => {
-                const pacs = pacientes.filter(p => p.obraSocialId === os.id);
-                if (pacs.length > 0) {
-                  const cantSes = pacs.reduce((a, c) => a + (c.sesionesConsumidas || 1), 0);
-                  onSaveLiquidacion({
-                    id: `liq-${Date.now()}-${os.id}`,
-                    obraSocialId: os.id,
-                    periodo: periodo,
-                    fechaPresentacion: new Date().toISOString().split('T')[0],
-                    cantidadSesiones: cantSes,
-                    montoBruto: cantSes * os.arancelSesion,
-                    estado: 'Presentada',
-                    observaciones: `Lote automático generado para ${os.nombre}.`,
-                  });
-                }
-              });
+              handleLiquidacionMasiva();
             }}
             className="btn btn-secondary text-xs flex items-center gap-1.5 shadow-xs"
             title="Generar liquidación de todas las obras sociales en 1 clic"
           >
             <span>Liquidación Masiva</span>
             {subscription?.plan !== 'pro' && <ProBadge size="xs" text="PRO" />}
+          </button>
+
+          <button 
+            onClick={handleAbrirAranceles}
+            className="btn btn-secondary text-xs shadow-xs"
+          >
+            <span>Aranceles</span>
           </button>
 
           <button 
@@ -343,7 +375,7 @@ export const LiquidacionesView = ({
                   className="input-field text-xs"
                 >
                   {obrasSociales.filter(o => o.id !== 'particular').map(os => (
-                    <option key={os.id} value={os.id}>{os.nombre} (${os.arancelSesion.toLocaleString('es-AR')} / ses)</option>
+                    <option key={os.id} value={os.id}>{os.nombre} (${(os.arancelSesion || 0).toLocaleString('es-AR')} / ses)</option>
                   ))}
                 </select>
               </div>
@@ -351,14 +383,26 @@ export const LiquidacionesView = ({
               <div>
                 <label className="block font-semibold mb-1">Período de Facturación *</label>
                 <input
-                  type="text"
-                  value={periodo}
-                  onChange={(e) => setPeriodo(e.target.value)}
-                  placeholder="Ej: Septiembre 2026"
+                  type="month"
+                  value={mes}
+                  onChange={(e) => setMes(e.target.value)}
                   className="input-field text-xs"
                   required
                 />
               </div>
+
+              {previewLiq && (
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-[12px] text-slate-600 dark:text-slate-300">
+                  {previewLiq.totalSesiones > 0 ? (
+                    <span>
+                      {mesALabel(mes)}: <b>{previewLiq.totalSesiones}</b> sesiones atendidas de <b>{previewLiq.pacientes}</b> paciente(s) ×
+                      ${(previewLiq.os.arancelSesion || 0).toLocaleString('es-AR')} = <b>${previewLiq.monto.toLocaleString('es-AR')}</b>
+                    </span>
+                  ) : (
+                    <span>No hay turnos marcados como "Atendido" de pacientes de {previewLiq.os.sigla || previewLiq.os.nombre} en {mesALabel(mes)}. Marcá los turnos en la Agenda para que se sumen.</span>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block font-semibold mb-1">Observaciones / N° de Planilla</label>
@@ -385,6 +429,49 @@ export const LiquidacionesView = ({
                 >
                   Generar y Registrar
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ARANCELES POR OBRA SOCIAL */}
+      {isArancelesOpen && (
+        <div className="modal-backdrop">
+          <div className="card max-w-lg w-full p-5 sm:p-6 shadow-[var(--shadow-hover)] space-y-3.5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
+              <h3 className="text-sm font-semibold font-display text-slate-900 dark:text-white">Aranceles por obra social</h3>
+              <button onClick={() => setIsArancelesOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <XCircle size={17} />
+              </button>
+            </div>
+            <form onSubmit={handleGuardarAranceles} className="space-y-2 text-xs">
+              <div className="grid grid-cols-[1fr_96px_96px] gap-2 font-semibold text-slate-500 text-[11px]">
+                <span>Obra social</span><span>Arancel ($)</span><span>Coseguro ($)</span>
+              </div>
+              {arancelesDraft.map((os, i) => (
+                <div key={os.id} className="grid grid-cols-[1fr_96px_96px] gap-2 items-center">
+                  <span className="font-medium text-slate-800 dark:text-slate-200 truncate" title={os.nombre}>{os.nombre}</span>
+                  {['arancelSesion', 'coseguroRecomendado'].map(campo => (
+                    <input
+                      key={campo}
+                      type="number"
+                      min="0"
+                      step="100"
+                      value={os[campo] ?? 0}
+                      onChange={(e) => {
+                        const next = [...arancelesDraft];
+                        next[i] = { ...next[i], [campo]: Math.max(0, Number(e.target.value) || 0) };
+                        setArancelesDraft(next);
+                      }}
+                      className="input-field text-xs font-mono text-right"
+                    />
+                  ))}
+                </div>
+              ))}
+              <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-slate-200 dark:border-slate-800">
+                <button type="button" onClick={() => setIsArancelesOpen(false)} className="btn btn-secondary text-xs">Cancelar</button>
+                <button type="submit" className="btn btn-primary text-xs">Guardar aranceles</button>
               </div>
             </form>
           </div>

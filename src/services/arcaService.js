@@ -3,7 +3,10 @@
 
 import QRCode from 'qrcode';
 
-// Catálogo oficial de Obras Sociales y Prepagas de Argentina con datos fiscales
+// Catálogo de Obras Sociales y Prepagas con datos fiscales.
+// CUITs verificados en noviembre 2026 contra fuentes públicas (constancias, legajos impositivos
+// y sitios oficiales de cada entidad). Accord Salud queda sin CUIT hasta confirmarlo:
+// antes de facturarle, pedile su constancia de inscripción.
 export const OBRAS_SOCIALES_FISCALES = [
   {
     id: 'osde',
@@ -21,9 +24,9 @@ export const OBRAS_SOCIALES_FISCALES = [
     id: 'swiss-medical',
     nombre: 'Swiss Medical S.A.',
     sigla: 'SWISS MEDICAL',
-    cuit: '30-67813830-3',
-    condicionIva: 'IVA Responsable Inscripto',
-    domicilioFiscal: 'Av. Pueyrredón 1441, CABA',
+    cuit: '30-65485516-8',
+    condicionIva: 'Responsable Inscripto',
+    domicilioFiscal: 'San Martín 323, Piso 18, CABA',
     nomencladorDefault: '33.01.01',
     exigeAfiliado: true,
     exigeFechasSesiones: true,
@@ -33,9 +36,9 @@ export const OBRAS_SOCIALES_FISCALES = [
     id: 'ioscor',
     nombre: 'IOSCOR (Instituto de Obra Social de Corrientes)',
     sigla: 'IOSCOR',
-    cuit: '30-63300588-7',
-    condicionIva: 'IVA Sujeto No Categorizado / Exento',
-    domicilioFiscal: 'San Juan 460, Corrientes Capital',
+    cuit: '30-63900831-9',
+    condicionIva: 'IVA Exento',
+    domicilioFiscal: 'Dr. Ramón Carrillo 444, Corrientes Capital',
     nomencladorDefault: '33.01.01',
     exigeAfiliado: true,
     exigeFechasSesiones: true,
@@ -45,9 +48,9 @@ export const OBRAS_SOCIALES_FISCALES = [
     id: 'medife',
     nombre: 'Medifé Asociación Civil',
     sigla: 'MEDIFÉ',
-    cuit: '30-66004921-2',
-    condicionIva: 'IVA Exento',
-    domicilioFiscal: 'Tucumán 1424, CABA',
+    cuit: '30-68273765-0',
+    condicionIva: 'Responsable Inscripto',
+    domicilioFiscal: 'Lima 87, Piso 5, CABA',
     nomencladorDefault: '33.01.01',
     exigeAfiliado: true,
     exigeFechasSesiones: true,
@@ -57,7 +60,7 @@ export const OBRAS_SOCIALES_FISCALES = [
     id: 'sancor',
     nombre: 'Asociación Mutual SanCor',
     sigla: 'SANCOR SALUD',
-    cuit: '30-67990422-0',
+    cuit: '30-59035479-8',
     condicionIva: 'IVA Exento',
     domicilioFiscal: 'Av. Arturo Illia 850, Sunchales, Santa Fe',
     nomencladorDefault: '33.01.01',
@@ -69,8 +72,8 @@ export const OBRAS_SOCIALES_FISCALES = [
     id: 'galeno',
     nombre: 'Galeno Argentina S.A.',
     sigla: 'GALENO',
-    cuit: '30-68045952-1',
-    condicionIva: 'IVA Responsable Inscripto',
+    cuit: '30-52242816-3',
+    condicionIva: 'Responsable Inscripto',
     domicilioFiscal: 'Av. Córdoba 1712, CABA',
     nomencladorDefault: '33.01.01',
     exigeAfiliado: true,
@@ -93,9 +96,9 @@ export const OBRAS_SOCIALES_FISCALES = [
     id: 'ioma',
     nombre: 'IOMA (Instituto de Obra Médico Asistencial)',
     sigla: 'IOMA',
-    cuit: '30-63640234-8',
+    cuit: '30-62824952-7',
     condicionIva: 'IVA Exento',
-    domicilioFiscal: 'Calle 46 N° 560, La Plata, Buenos Aires',
+    domicilioFiscal: 'Calle 46 N° 886, La Plata, Buenos Aires',
     nomencladorDefault: '33.01.01',
     exigeAfiliado: true,
     exigeFechasSesiones: true,
@@ -105,7 +108,7 @@ export const OBRAS_SOCIALES_FISCALES = [
     id: 'osecac',
     nombre: 'OSECAC (Obra Social de Empleados de Comercio)',
     sigla: 'OSECAC',
-    cuit: '30-54737225-1',
+    cuit: '30-55027355-8',
     condicionIva: 'IVA Exento',
     domicilioFiscal: 'Moreno 648, CABA',
     nomencladorDefault: '33.01.01',
@@ -117,7 +120,7 @@ export const OBRAS_SOCIALES_FISCALES = [
     id: 'union-personal',
     nombre: 'Obra Social del Personal de UPCN / Accord Salud',
     sigla: 'ACCORD SALUD',
-    cuit: '30-68198754-8',
+    cuit: '',
     condicionIva: 'IVA Exento',
     domicilioFiscal: 'San Martín 670, CABA',
     nomencladorDefault: '33.01.01',
@@ -129,8 +132,8 @@ export const OBRAS_SOCIALES_FISCALES = [
     id: 'omint',
     nombre: 'OMINT S.A. de Servicios del Sanatorio Fleming',
     sigla: 'OMINT',
-    cuit: '30-51920689-5',
-    condicionIva: 'IVA Responsable Inscripto',
+    cuit: '30-55024530-9',
+    condicionIva: 'Responsable Inscripto',
     domicilioFiscal: 'Carlos Pellegrini 1363, CABA',
     nomencladorDefault: '33.01.01',
     exigeAfiliado: true,
@@ -141,8 +144,8 @@ export const OBRAS_SOCIALES_FISCALES = [
     id: 'prevencion-salud',
     nombre: 'Prevención Salud S.A.',
     sigla: 'PREVENCIÓN SALUD',
-    cuit: '30-71408330-4',
-    condicionIva: 'IVA Responsable Inscripto',
+    cuit: '30-71304500-0',
+    condicionIva: 'Responsable Inscripto',
     domicilioFiscal: 'Ruta 34 Km 257, Sunchales, Santa Fe',
     nomencladorDefault: '33.01.01',
     exigeAfiliado: true,
@@ -215,183 +218,120 @@ export const formatearCuit = (val) => {
   return `${digits.slice(0, 2)}-${digits.slice(2, 10)}-${digits.slice(10, 11)}`;
 };
 
-// Generador del enlace oficial de ARCA para Código QR (RG 4291)
+// ---------- Códigos y numeración ----------
+
+/** Código ARCA del tipo de comprobante a partir del nombre usado en la app. */
+export const codigoTipoComprobante = (tipo = '') => {
+  const t = String(tipo);
+  if (t.includes('Factura B')) return 6;
+  if (t.includes('Recibo')) return 15;
+  return 11;
+};
+
+/** Condición frente al IVA del receptor → código de ARCA (RG 5616). */
+const CONDICION_IVA_IDS = {
+  'responsable inscripto': 1,
+  'iva responsable inscripto': 1,
+  'iva exento': 4,
+  'iva sujeto exento': 4,
+  'exento': 4,
+  'consumidor final': 5,
+  'monotributo': 6,
+  'responsable monotributo': 6,
+  'sujeto no categorizado': 7,
+  'iva no alcanzado': 15,
+};
+export const condicionIvaReceptorId = (texto) => CONDICION_IVA_IDS[String(texto || '').trim().toLowerCase()] ?? null;
+
+/** Tipo y número de documento del receptor: 11 dígitos = CUIT (80), 7-8 = DNI (96), vacío = consumidor final (99). */
+export const documentoReceptor = (doc) => {
+  const d = String(doc || '').replace(/\D/g, '');
+  if (d.length === 11) return { docTipo: 80, docNro: d };
+  if (d.length >= 7 && d.length <= 8) return { docTipo: 96, docNro: d };
+  return { docTipo: 99, docNro: '0' };
+};
+
+export const formatearNumeroComprobante = (puntoVenta, numero) =>
+  `${String(puntoVenta).padStart(4, '0')}-${String(numero).padStart(8, '0')}`;
+
+/** "0003-00000046" → { puntoVenta: 3, numero: 46 } */
+export const partesNumeroComprobante = (numeroFactura, puntoVentaDefault = 1) => {
+  const m = String(numeroFactura || '').match(/^\s*(\d+)\s*-\s*(\d+)\s*$/);
+  if (m) return { puntoVenta: parseInt(m[1], 10), numero: parseInt(m[2], 10) };
+  const d = String(numeroFactura || '').replace(/\D/g, '');
+  return {
+    puntoVenta: parseInt(String(puntoVentaDefault).replace(/\D/g, ''), 10) || 1,
+    numero: d ? parseInt(d.slice(-8), 10) : 0,
+  };
+};
+
+/**
+ * Estado fiscal de una factura guardada:
+ * 'valida'      → autorizada por ARCA en producción.
+ * 'prueba'      → autorizada en homologación (no tiene validez fiscal).
+ * 'sin_validez' → nunca se autorizó en ARCA (borrador o CAE cargado a mano).
+ */
+export const estadoFiscalFactura = (f) => {
+  if (!f?.cae || !f?.arcaAutorizado) return 'sin_validez';
+  return f.arcaAmbiente === 'produccion' ? 'valida' : 'prueba';
+};
+
+// ---------- Código QR (RG 4892 / especificación ARCA v1) ----------
+
+/** URL del QR oficial. Devuelve null si falta CUIT o CAE reales: nunca se inventan datos. */
 export const generarUrlQrArca = ({
   cuitEmisor,
-  puntoVenta = 1,
-  tipoComprobante = 11, // 11 = Factura C
+  puntoVenta,
+  tipoComprobante = 11,
   numeroComprobante,
   importe,
   fechaEmision,
-  tipoDocReceptor = 96, // 96 = DNI, 80 = CUIT, 99 = Consumidor Final
+  tipoDocReceptor,
   nroDocReceptor,
   cae
 }) => {
-  const cuitClean = parseInt(String(cuitEmisor || '27384521904').replace(/\D/g, ''), 10);
-  const ptoVtaInt = parseInt(puntoVenta, 10) || 1;
-  const tipoCmpInt = parseInt(tipoComprobante, 10) || 11;
-  const nroCmpInt = parseInt(String(numeroComprobante).replace(/\D/g, ''), 10) || 1;
-  const docRecClean = parseInt(String(nroDocReceptor || '0').replace(/\D/g, ''), 10) || 0;
-  
+  const cuit = String(cuitEmisor || '').replace(/\D/g, '');
+  const caeDig = String(cae || '').replace(/\D/g, '');
+  if (cuit.length !== 11 || caeDig.length !== 14) return null;
+
+  const { puntoVenta: pv, numero } = partesNumeroComprobante(numeroComprobante, puntoVenta);
+  const receptor = tipoDocReceptor
+    ? { docTipo: Number(tipoDocReceptor), docNro: String(nroDocReceptor || '').replace(/\D/g, '') || '0' }
+    : documentoReceptor(nroDocReceptor);
+
   const payloadJson = {
     ver: 1,
-    fecha: fechaEmision || new Date().toISOString().split('T')[0],
-    cuit: cuitClean,
-    ptoVta: ptoVtaInt,
-    tipoCmp: tipoCmpInt,
-    nroCmp: nroCmpInt,
+    fecha: fechaEmision,
+    cuit: Number(cuit),
+    ptoVta: pv,
+    tipoCmp: Number(tipoComprobante),
+    nroCmp: numero,
     importe: Number(Number(importe || 0).toFixed(2)),
     moneda: 'PES',
     ctz: 1,
-    tipoDocRec: docRecClean === 0 ? 99 : tipoDocReceptor,
-    nroDocRec: docRecClean,
+    tipoDocRec: receptor.docTipo,
+    nroDocRec: Number(receptor.docNro) || 0,
     tipoCodAut: 'E',
-    codAut: parseInt(String(cae || '74392019482910').replace(/\D/g, ''), 10)
+    codAut: Number(caeDig)
   };
 
-  const jsonStr = JSON.stringify(payloadJson);
-  // Base64 encode safe for browser
-  const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
+  const base64 = btoa(unescape(encodeURIComponent(JSON.stringify(payloadJson))));
   return `https://www.afip.gob.ar/fe/qr/?p=${base64}`;
 };
 
-// Generador de imagen DataURL del QR de ARCA
+/** Imagen DataURL del QR, o null si el comprobante no tiene CAE real. */
 export const generarQrArcaDataUrl = async (params) => {
+  const url = generarUrlQrArca(params);
+  if (!url) return null;
   try {
-    const url = generarUrlQrArca(params);
     return await QRCode.toDataURL(url, {
       errorCorrectionLevel: 'M',
       margin: 1,
       width: 200,
-      color: {
-        dark: '#000000',
-        light: '#ffffff'
-      }
+      color: { dark: '#000000', light: '#ffffff' }
     });
   } catch (err) {
     console.error('Error generando QR de ARCA:', err);
     return null;
   }
-};
-
-// Generador de Código de Barras Fiscal AFIP (40 dígitos)
-// Estructura: CUIT (11) + Tipo Comprobante (3) + Punto Venta (5) + CAE (14) + Fecha Vto (8) + Dígito Verificador M10 (1)
-export const generarCodigoBarrasFiscal = ({
-  cuitEmisor,
-  tipoComprobante = 11,
-  puntoVenta = 1,
-  cae,
-  fechaVencimientoCae
-}) => {
-  const cuitClean = String(cuitEmisor || '27384521904').replace(/\D/g, '').padStart(11, '0');
-  const tipoCmpStr = String(tipoComprobante || 11).padStart(3, '0');
-  const ptoVtaStr = String(puntoVenta || 1).padStart(5, '0');
-  const caeStr = String(cae || '74392019482910').replace(/\D/g, '').padStart(14, '0');
-  const vtoClean = String(fechaVencimientoCae || '').replace(/-/g, '').slice(0, 8) || '20261010';
-
-  const base41 = `${cuitClean}${tipoCmpStr}${ptoVtaStr}${caeStr}${vtoClean}`;
-  
-  // Algoritmo Módulo 10 para código de barras AFIP
-  let pares = 0;
-  let impares = 0;
-  for (let i = 0; i < base41.length; i++) {
-    const dig = parseInt(base41[i], 10);
-    if ((i + 1) % 2 === 0) {
-      pares += dig;
-    } else {
-      impares += dig;
-    }
-  }
-  const etapa2 = impares * 3;
-  const etapa3 = etapa2 + pares;
-  const digitoVerificador = (10 - (etapa3 % 10)) % 10;
-
-  return `${base41}${digitoVerificador}`;
-};
-
-// Simulación y Autorización con ARCA WebServices (WSFE v1)
-// En modo Producción / Homologación valida campos y genera CAE oficial con reglas fiscales
-export const autorizarComprobanteArca = async ({
-  cuitEmisor,
-  puntoVenta,
-  tipoComprobante,
-  concepto = 2, // 2 = Servicios (Salud)
-  paciente,
-  obraSocial,
-  modalidad, // 'reintegro_paciente' | 'directo_obra_social' | 'particular'
-  items,
-  total,
-  fechaServicioDesde,
-  fechaServicioHasta,
-  fechaVencimientoPago,
-  observacionesClinicas,
-  ambiente = 'homologacion' // 'homologacion' | 'produccion'
-}) => {
-  // Simular latencia de red con servidores de ARCA
-  await new Promise(resolve => setTimeout(resolve, 850));
-
-  // Validaciones fiscales estrictas
-  const checkCuit = validarCuit(cuitEmisor);
-  if (!checkCuit.valido) {
-    return {
-      success: false,
-      error: `Error de Emisor ARCA: ${checkCuit.error}`
-    };
-  }
-
-  if (!puntoVenta) {
-    return {
-      success: false,
-      error: 'Debe especificar el Punto de Venta habilitado en ARCA para Comprobantes en Línea / WebServices.'
-    };
-  }
-
-  if (!items || items.length === 0 || !total || total <= 0) {
-    return {
-      success: false,
-      error: 'El comprobante debe tener al menos un ítem con importe mayor a $0.'
-    };
-  }
-
-  // Si es modalidad directo a obra social, validar CUIT de la Obra Social
-  if (modalidad === 'directo_obra_social') {
-    if (!obraSocial?.cuit) {
-      return {
-        success: false,
-        error: 'Para facturación directa a Obra Social / Prepaga se requiere CUIT de la entidad.'
-      };
-    }
-    const valOs = validarCuit(obraSocial.cuit);
-    if (!valOs.valido) {
-      return {
-        success: false,
-        error: `CUIT de la Obra Social inválido: ${valOs.error}`
-      };
-    }
-  }
-
-  // Generación de CAE Fiscal según estándar de ARCA
-  // 14 dígitos que comienzan con prefijo habilitado (ej: 74, 75 o 76)
-  const prefijoCae = '75';
-  const aleatorio12 = Math.floor(100000000000 + Math.random() * 900000000000);
-  const caeGenerado = `${prefijoCae}${aleatorio12}`;
-
-  // Fecha de vencimiento del CAE: 10 días posteriores a la fecha de emisión (estándar fiscal)
-  const hoy = new Date();
-  const fechaVto = new Date(hoy);
-  fechaVto.setDate(hoy.getDate() + 10);
-  const fechaVencimientoCae = fechaVto.toISOString().split('T')[0];
-
-  return {
-    success: true,
-    ambiente,
-    cae: caeGenerado,
-    vencimientoCae: fechaVencimientoCae,
-    puntoVenta: String(puntoVenta).padStart(4, '0'),
-    tipoComprobanteCodigo: tipoComprobante === 'Factura C' ? 11 : tipoComprobante === 'Factura B' ? 6 : 15,
-    mensajeArca: ambiente === 'homologacion' 
-      ? 'Autorizado por ARCA (Modo Homologación / Certificación Fiscal WSFEv1 exitosa)' 
-      : 'Aprobado y validado legalmente por ARCA WebServices (WSFE v1)',
-    fechaAutorizacion: new Date().toISOString()
-  };
 };
