@@ -23,6 +23,8 @@ const arcaDevApi = () => ({
 
 // https://vite.dev/config/
 export default defineConfig({
+  // NEXT_PUBLIC_* las carga la integración Supabase ↔ Vercel (solo URL y clave pública).
+  envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
   plugins: [
     tailwindcss(),
     react(),
