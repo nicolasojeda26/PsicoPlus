@@ -22,6 +22,7 @@ import { LandingPage } from './components/Landing/LandingPage';
 import { LegalModal } from './components/Legal/LegalModal';
 import { BrandMark, BrandWordmark } from './components/Common/BrandMark';
 import { CookieConsentBanner } from './components/Common/CookieConsentBanner';
+import { getPortalId, armarDatosPortal, publicarPortal, cargarPortal, enviarSolicitud, recibirSolicitudes, borrarSolicitudes } from './services/portalCloud';
 import { hasCloudSession, loadCloudSettings, saveCloudSettings, closeCloudSession } from './services/cloudSettings';
 import './App.css';
 
@@ -34,6 +35,8 @@ export function AppContent() {
   const isDirectPortal = urlParams.get('portal') === 'paciente' || urlParams.get('portal') === 'turnos' || urlParams.get('reserva') === 'true';
   const isDirectLanding = urlParams.get('landing') === 'true';
   const isDirectApp = urlParams.get('app') === 'true' || urlParams.get('demo') === 'true';
+  // Link del portal con la cuenta del profesional: ?portal=paciente&p=<id>
+  const portalParamId = isDirectPortal ? urlParams.get('p') : null;
 
   // Visitantes nuevos (sin sesión guardada) ven primero la landing pública.
   let hasStoredSession = false;
@@ -95,6 +98,10 @@ export function AppContent() {
 
   // Configuración de la cuenta en la nube: 'local' | 'syncing' | 'synced' | 'error' | 'confirm-email'
   const [cloudStatus, setCloudStatus] = useState('local');
+  // Id público del portal de pacientes del profesional (su cuenta en la nube).
+  const [portalId, setPortalId] = useState(null);
+  // Portal abierto por un paciente desde el link: datos del profesional traídos de la nube.
+  const [remotePortal, setRemotePortal] = useState({ status: portalParamId ? 'loading' : 'off', data: null });
 
   const applyCloudSettings = (data) => {
     if (data.config) { setConfig(data.config); saveToStorage('psicoplus_config_v1', data.config); }
@@ -112,10 +119,12 @@ export function AppContent() {
     if (remota && (remota.config || remota.sedes || remota.obrasSociales || remota.subscription)) {
       applyCloudSettings(remota);
       setCloudStatus('synced');
+      setPortalId(await getPortalId());
       return;
     }
     const res = await saveCloudSettings(local);
     setCloudStatus(res.ok ? 'synced' : 'error');
+    if (res.ok) setPortalId(await getPortalId());
   };
 
   const pushToCloud = async (parcial) => {
@@ -128,9 +137,54 @@ export function AppContent() {
 
   // Al abrir la app con una sesión ya iniciada, se trae la última configuración de la cuenta.
   useEffect(() => {
+    if (portalParamId) return; // el paciente no tiene sesión: el portal se carga aparte
     syncFromCloud(currentUser, { config, sedes, obrasSociales, subscription: storedSubscription });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Paciente que abre el link: trae sedes, horarios y horarios ocupados del profesional.
+  useEffect(() => {
+    if (!portalParamId) return;
+    cargarPortal(portalParamId)
+      .then(data => setRemotePortal({ status: data ? 'ok' : 'missing', data }))
+      .catch(() => setRemotePortal({ status: 'error', data: null }));
+  }, [portalParamId]);
+
+  // El profesional publica su portal (sin datos de pacientes) cada vez que cambian sedes, horarios o turnos.
+  useEffect(() => {
+    if (cloudStatus !== 'synced' || !portalId || currentUser?.isDemo) return;
+    const timer = setTimeout(() => {
+      publicarPortal(armarDatosPortal({ config, sedes, obrasSociales, turnos }));
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [cloudStatus, portalId, currentUser, config, sedes, obrasSociales, turnos]);
+
+  // Solicitudes de turno que los pacientes enviaron desde el link: se suman a la agenda.
+  useEffect(() => {
+    if (cloudStatus !== 'synced' || !portalId || currentUser?.isDemo) return;
+    let cancelado = false;
+    const revisar = async () => {
+      const filas = await recibirSolicitudes();
+      if (cancelado || !filas.length) return;
+      setTurnos(prev => {
+        const nuevos = filas.map(f => f.turno).filter(t => t?.id && !prev.some(p => p.id === t.id));
+        if (!nuevos.length) return prev;
+        const updated = [...nuevos, ...prev];
+        saveToStorage('psicoplus_turnos_v1', updated);
+        return updated;
+      });
+      await borrarSolicitudes(filas.map(f => f.id));
+      toast.showInfo(filas.length === 1
+        ? `Nueva solicitud de turno de ${filas[0].turno?.pacienteNombre || 'un paciente'} desde el portal.`
+        : `${filas.length} nuevas solicitudes de turno desde el portal.`);
+    };
+    revisar();
+    const intervalo = setInterval(revisar, 60000);
+    const alVolver = () => { if (document.visibilityState === 'visible') revisar(); };
+    document.addEventListener('visibilitychange', alVolver);
+    return () => { cancelado = true; clearInterval(intervalo); document.removeEventListener('visibilitychange', alVolver); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudStatus, portalId, currentUser]);
 
   // Sync dark mode class with HTML element
   useEffect(() => {
@@ -382,23 +436,41 @@ export function AppContent() {
           <span className="flex items-center gap-2"><BrandMark size={28} /><BrandWordmark className="text-[var(--text-main)]" /><span className="text-[12.5px] text-slate-500 ml-1 hidden sm:inline">Portal de pacientes</span></span>
           <button
             onClick={() => {
-              window.history.pushState({}, '', window.location.pathname);
-              setViewMode('app');
-              setActiveTab('dashboard');
+              // Recarga completa: así la app del profesional sincroniza su cuenta al entrar.
+              window.location.href = window.location.pathname;
             }}
             className="h-9 px-3 rounded-lg text-[13px] text-slate-600 hover:text-slate-900 hover:bg-slate-900/5 font-medium"
           >
             Acceso profesional →
           </button>
         </div>
-        <PortalTurnosView
-          sedes={sedes}
-          obrasSociales={obrasSociales}
-          turnos={turnos}
-          config={config}
-          onSaveTurno={handleSaveTurno}
-          isStandalone={true}
-        />
+        {portalParamId ? (
+          remotePortal.status === 'ok' ? (
+            <PortalTurnosView
+              sedes={remotePortal.data.sedes || []}
+              obrasSociales={remotePortal.data.obrasSociales || []}
+              turnos={remotePortal.data.ocupados || []}
+              config={remotePortal.data.config || {}}
+              onSaveTurno={(turno) => enviarSolicitud(portalParamId, turno)}
+              isStandalone={true}
+            />
+          ) : (
+            <div className="max-w-md mx-auto card p-6 text-center text-[14px] text-slate-600 dark:text-slate-300">
+              {remotePortal.status === 'loading' && 'Cargando los horarios disponibles…'}
+              {remotePortal.status === 'missing' && 'Este link de turnos todavía no está activo. Pedile a tu profesional un link nuevo.'}
+              {remotePortal.status === 'error' && 'No pudimos cargar los horarios. Revisá tu conexión y volvé a abrir el link.'}
+            </div>
+          )
+        ) : (
+          <PortalTurnosView
+            sedes={sedes}
+            obrasSociales={obrasSociales}
+            turnos={turnos}
+            config={config}
+            onSaveTurno={handleSaveTurno}
+            isStandalone={true}
+          />
+        )}
         <footer className="text-center text-[12px] text-slate-400 mt-8 pb-6">
           © {new Date().getFullYear()} PsicoPlus - Sistema de Gestión Profesional
         </footer>
@@ -618,6 +690,7 @@ export function AppContent() {
               onActualizarTurnoEstado={handleActualizarTurnoEstado}
               onDeleteTurno={handleDeleteTurno}
               onBackToApp={() => setActiveTab('dashboard')}
+              portalId={portalId}
               isStandalone={false}
             />
           )}

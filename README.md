@@ -2,7 +2,7 @@
 
 Software de gestión para consultorios de psicología: agenda de turnos, historia de pacientes, facturación y liquidaciones a los profesionales del consultorio.
 
-**Demo:** https://psicoplus-iota.vercel.app
+**Sitio:** https://psicoplus.net.ar
 
 ## Qué hace
 

@@ -1,3 +1,5 @@
+import { SITE_URL } from '../lib/site';
+
 // Utilidades de WhatsApp para Argentina (formateo de números y plantillas)
 
 export const formatArgentinaPhoneForWhatsapp = (phone) => {
@@ -84,7 +86,7 @@ export const createTurnoConfirmadoMessage = ({ config, pacienteNombre, dia, hora
 export const createPortalShareMessage = ({ config, portalUrl }) => {
   const profesional = config?.nombre || 'Lic. Virna Toledo';
   const titulo = config?.titulo || 'Lic. en Psicología';
-  const url = portalUrl || 'https://psicoplus-one.vercel.app/?portal=paciente';
+  const url = portalUrl || `${SITE_URL}/?portal=paciente`;
 
   return `¡Hola! Te comparto el enlace de reservas online de ${profesional} (${titulo}) para que puedas elegir el día y horario que mejor te quede para tu turno:\n\n👉 ${url}\n\n¡Cualquier consulta estoy a tu disposición!`;
 };
