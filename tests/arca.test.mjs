@@ -2,7 +2,7 @@
 // Ejecutar: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { autorizar, armarDetalle, ArcaError } from '../server/arcaCore.js';
+import { autorizar, armarDetalle, ArcaError, setTransporte } from '../server/arcaCore.js';
 
 const env = (inner) => `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body>${inner}</soap:Body></soap:Envelope>`;
 const ultimo = (n) => env(`<FECompUltimoAutorizadoResponse xmlns="http://ar.gov.afip.dif.FEV1/"><FECompUltimoAutorizadoResult><PtoVta>3</PtoVta><CbteTipo>11</CbteTipo><CbteNro>${n}</CbteNro></FECompUltimoAutorizadoResult></FECompUltimoAutorizadoResponse>`);
@@ -17,10 +17,10 @@ const auth = { token: 'T', sign: 'S', cuit: '20-12345678-6' };
 
 const mockFetch = (respuestas) => {
   const llamadas = [];
-  globalThis.fetch = async (url, opts) => {
+  setTransporte(async (url, opts) => {
     llamadas.push({ url, action: opts.headers.SOAPAction, body: opts.body });
     return { status: 200, text: async () => respuestas.shift() };
-  };
+  });
   return llamadas;
 };
 

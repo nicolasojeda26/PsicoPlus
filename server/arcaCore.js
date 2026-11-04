@@ -2,6 +2,7 @@
 // Se ejecuta en el servidor (función de Vercel). No guarda certificados ni claves:
 // los recibe en cada pedido y los descarta al terminar.
 
+import https from 'node:https';
 import forge from 'node-forge';
 import { XMLParser } from 'fast-xml-parser';
 
@@ -111,17 +112,38 @@ export const leerCertificado = (certPem) => {
   };
 };
 
+// Los servidores de producción de ARCA (servicios1) todavía negocian TLS con claves
+// Diffie-Hellman cortas, que OpenSSL 3 rechaza ("dh key too small"). Solo para los hosts
+// de ARCA bajamos ese mínimo; el certificado del servidor se sigue verificando.
+const agenteArca = new https.Agent({ keepAlive: true, ciphers: 'DEFAULT@SECLEVEL=0', minDHSize: 512 });
+
+const httpsPost = (url, { headers, body }) => new Promise((resolve, reject) => {
+  const req = https.request(url, { method: 'POST', headers: { ...headers, 'Content-Length': Buffer.byteLength(body) }, agent: agenteArca, timeout: 25000 }, (res) => {
+    let data = '';
+    res.setEncoding('utf8');
+    res.on('data', (c) => { data += c; });
+    res.on('end', () => resolve({ status: res.statusCode, text: async () => data }));
+  });
+  req.on('timeout', () => req.destroy(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })));
+  req.on('error', reject);
+  req.end(body);
+});
+
+let transporte = httpsPost;
+/** Solo para tests: reemplaza el transporte HTTP. */
+export const setTransporte = (fn) => { transporte = fn || httpsPost; };
+
 const postSoap = async (url, body, soapAction) => {
   let res;
   try {
-    res = await fetch(url, {
-      method: 'POST',
+    res = await transporte(url, {
       headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: soapAction },
       body,
-      signal: AbortSignal.timeout(25000),
     });
   } catch (e) {
-    throw new ArcaError('No se pudo conectar con los servidores de ARCA. Puede ser una caída temporal: probá de nuevo en unos minutos.', { code: 'red', status: 502 });
+    const codigo = e?.code || e?.cause?.code || e?.message;
+    console.error('Error de red con ARCA', url, codigo);
+    throw new ArcaError('No se pudo conectar con los servidores de ARCA. Puede ser una caída temporal: probá de nuevo en unos minutos.', { code: 'red', status: 502, detalles: `${new URL(url).host}: ${codigo}` });
   }
   const text = await res.text();
   let parsed;
