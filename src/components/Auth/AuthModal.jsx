@@ -63,7 +63,7 @@ export const AuthModal = ({
 
         if (res.success) {
           toast.showSuccess(`¡Bienvenido/a a PsicoPlus, ${res.user.nombre}! Tu cuenta gratuita ha sido creada.`);
-          if (onAuthSuccess) onAuthSuccess(res.user, true); // true = isNewRegistration
+          if (onAuthSuccess) onAuthSuccess(res.user, true, res.cloud); // true = isNewRegistration
           onClose();
         } else {
           setError(res.error);
@@ -75,7 +75,7 @@ export const AuthModal = ({
 
         if (res.success) {
           toast.showSuccess(`Sesión iniciada correctamente. ¡Hola, ${res.user.nombre}!`);
-          if (onAuthSuccess) onAuthSuccess(res.user, false);
+          if (onAuthSuccess) onAuthSuccess(res.user, false, res.cloud);
           onClose();
         } else {
           setError(res.error);

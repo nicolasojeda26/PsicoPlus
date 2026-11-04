@@ -1,4 +1,5 @@
 import { hashPassword, verifyPassword } from './securityService';
+import { openCloudSession, closeCloudSession } from './cloudSettings';
 
 const STORAGE_KEYS = {
   CURRENT_USER: 'psicoplus_current_user_v1',
@@ -57,6 +58,47 @@ export const getRegisteredUsers = () => {
   }
 };
 
+// Datos del perfil que se guardan junto con la cuenta en la nube (nunca la contraseña).
+const perfilPublico = (u) => ({
+  nombre: u.nombre,
+  titulo: u.titulo,
+  matriculaProvincial: u.matriculaProvincial,
+  colegio: u.colegio,
+  especialidad: u.especialidad,
+  telefono: u.telefono,
+  consultorioInicial: u.consultorioInicial,
+});
+
+const guardarUsuarios = (users) => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.REGISTERED_USERS, JSON.stringify(users));
+  } catch (e) {
+    console.error('Error al guardar usuarios:', e);
+  }
+};
+
+// Arma el usuario local a partir de una cuenta que existe en la nube (otro dispositivo).
+const usuarioDesdeNube = async (cloudUser, password) => {
+  const meta = cloudUser.user_metadata || {};
+  return {
+    id: `user-${cloudUser.id}`,
+    cloudId: cloudUser.id,
+    nombre: meta.nombre || cloudUser.email,
+    email: (cloudUser.email || '').toLowerCase(),
+    passwordHash: await hashPassword(password),
+    titulo: meta.titulo || 'Licenciado/a en Psicología',
+    matriculaProvincial: meta.matriculaProvincial || 'M.P. En trámite',
+    colegio: meta.colegio || 'Colegio de Psicólogos',
+    especialidad: meta.especialidad || 'Psicología Clínica',
+    telefono: meta.telefono || '',
+    consultorioInicial: meta.consultorioInicial,
+    fechaRegistro: cloudUser.created_at || new Date().toISOString(),
+    isDemo: false,
+  };
+};
+
+const MSG_CONFIRMAR = 'Revisá tu correo y confirmá la cuenta para poder ingresar.';
+
 export const registerUser = async ({
   nombre,
   email,
@@ -96,11 +138,18 @@ export const registerUser = async ({
     isDemo: false,
   };
 
+  // La cuenta también se crea en la nube, para que la configuración siga al usuario.
+  const cloud = await openCloudSession({ email: normalizedEmail, password, perfil: perfilPublico(newUser) });
+  if (cloud.reason === 'wrong-password') {
+    return { success: false, error: 'Ya existe una cuenta con este correo. Iniciá sesión.' };
+  }
+  if (cloud.user) newUser.cloudId = cloud.user.id;
+
   users.push(newUser);
-  localStorage.setItem(STORAGE_KEYS.REGISTERED_USERS, JSON.stringify(users));
+  guardarUsuarios(users);
   setCurrentUser(newUser);
 
-  return { success: true, user: newUser };
+  return { success: true, user: newUser, cloud };
 };
 
 export const loginUser = async (email, password) => {
@@ -112,14 +161,25 @@ export const loginUser = async (email, password) => {
     if (!isMatch) {
       return { success: false, error: 'Contraseña incorrecta.' };
     }
+    const cloud = await openCloudSession({ email: normalizedEmail, password, perfil: perfilPublico(VIRNA_FULL_USER) });
     setCurrentUser(VIRNA_FULL_USER);
-    return { success: true, user: VIRNA_FULL_USER };
+    return { success: true, user: VIRNA_FULL_USER, cloud };
   }
 
   const users = getRegisteredUsers();
   const found = users.find(u => u.email.toLowerCase() === normalizedEmail);
 
+  // Cuenta creada en otro dispositivo: se busca en la nube.
   if (!found) {
+    const cloud = await openCloudSession({ email: normalizedEmail, password, allowSignUp: false });
+    if (cloud.ok) {
+      const user = await usuarioDesdeNube(cloud.user, password);
+      guardarUsuarios([...users, user]);
+      setCurrentUser(user);
+      return { success: true, user, cloud };
+    }
+    if (cloud.reason === 'confirm-email') return { success: false, error: MSG_CONFIRMAR };
+    if (cloud.reason === 'wrong-password') return { success: false, error: 'Email o contraseña incorrectos.' };
     return { success: false, error: 'No se encontró ninguna cuenta con este correo.' };
   }
 
@@ -128,20 +188,33 @@ export const loginUser = async (email, password) => {
   const isMatch = await verifyPassword(password, storedHash);
 
   if (!isMatch) {
-    return { success: false, error: 'Contraseña incorrecta.' };
+    // Puede que la contraseña se haya cambiado desde otro dispositivo.
+    const cloud = await openCloudSession({ email: normalizedEmail, password, allowSignUp: false });
+    if (!cloud.ok) return { success: false, error: 'Contraseña incorrecta.' };
+    found.passwordHash = await hashPassword(password);
+    delete found.password;
+    found.cloudId = cloud.user.id;
+    guardarUsuarios(users);
+    setCurrentUser(found);
+    return { success: true, user: found, cloud };
   }
 
   // Si tenía contraseña vieja sin hash, migrarla a hash SHA-256
   if (!found.passwordHash) {
     found.passwordHash = await hashPassword(password);
     delete found.password;
-    localStorage.setItem(STORAGE_KEYS.REGISTERED_USERS, JSON.stringify(users));
   }
 
+  // Cuentas que existían solo en este navegador se suben a la nube en este primer ingreso.
+  const cloud = await openCloudSession({ email: normalizedEmail, password, perfil: perfilPublico(found) });
+  if (cloud.user) found.cloudId = cloud.user.id;
+  guardarUsuarios(users);
+
   setCurrentUser(found);
-  return { success: true, user: found };
+  return { success: true, user: found, cloud };
 };
 
 export const logoutUser = () => {
   setCurrentUser(DEMO_USER);
+  closeCloudSession();
 };

@@ -22,11 +22,12 @@ import { LandingPage } from './components/Landing/LandingPage';
 import { LegalModal } from './components/Legal/LegalModal';
 import { BrandMark, BrandWordmark } from './components/Common/BrandMark';
 import { CookieConsentBanner } from './components/Common/CookieConsentBanner';
-import { supabase } from './lib/supabase';
+import { hasCloudSession, loadCloudSettings, saveCloudSettings, closeCloudSession } from './services/cloudSettings';
 import './App.css';
 
 export function AppContent() {
   const initial = getStoredData();
+  const toast = useToast();
 
   // Detect URL parameters
   const urlParams = new URLSearchParams(window.location.search);
@@ -92,6 +93,45 @@ export function AppContent() {
   const [isPacienteModalOpen, setIsPacienteModalOpen] = useState(false);
   const [facturaPreselectedPaciente, setFacturaPreselectedPaciente] = useState(null);
 
+  // Configuración de la cuenta en la nube: 'local' | 'syncing' | 'synced' | 'error' | 'confirm-email'
+  const [cloudStatus, setCloudStatus] = useState('local');
+
+  const applyCloudSettings = (data) => {
+    if (data.config) { setConfig(data.config); saveToStorage('psicoplus_config_v1', data.config); }
+    if (data.sedes) { setSedes(data.sedes); saveToStorage('psicoplus_sedes_v1', data.sedes); }
+    if (data.obrasSociales) { setObrasSociales(data.obrasSociales); saveToStorage('psicoplus_obras_sociales_v1', data.obrasSociales); }
+    if (data.subscription) { setSubscription(data.subscription); saveSubscriptionData(data.subscription); }
+  };
+
+  // Trae la configuración guardada en la cuenta; si la cuenta todavía no tiene, sube la de este navegador.
+  const syncFromCloud = async (user, local) => {
+    if (!user || user.isDemo) { setCloudStatus('local'); return; }
+    if (!(await hasCloudSession(user.email))) { setCloudStatus('local'); return; }
+    setCloudStatus('syncing');
+    const remota = await loadCloudSettings();
+    if (remota && (remota.config || remota.sedes || remota.obrasSociales || remota.subscription)) {
+      applyCloudSettings(remota);
+      setCloudStatus('synced');
+      return;
+    }
+    const res = await saveCloudSettings(local);
+    setCloudStatus(res.ok ? 'synced' : 'error');
+  };
+
+  const pushToCloud = async (parcial) => {
+    if (currentUser?.isDemo || cloudStatus === 'local' || cloudStatus === 'confirm-email') return;
+    setCloudStatus('syncing');
+    const res = await saveCloudSettings(parcial);
+    setCloudStatus(res.ok ? 'synced' : 'error');
+    if (!res.ok) toast.showError('No se pudo guardar en tu cuenta. Quedó guardado en este navegador; reintentá con conexión.');
+  };
+
+  // Al abrir la app con una sesión ya iniciada, se trae la última configuración de la cuenta.
+  useEffect(() => {
+    syncFromCloud(currentUser, { config, sedes, obrasSociales, subscription: storedSubscription });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Sync dark mode class with HTML element
   useEffect(() => {
     if (isDarkMode) {
@@ -123,11 +163,14 @@ export function AppContent() {
   const handlePlanUpdated = (newSub) => {
     setSubscription(newSub);
     saveSubscriptionData(newSub);
+    pushToCloud({ subscription: newSub });
   };
 
-  const handleAuthSuccess = (user, isNewRegistration = false) => {
+  const handleAuthSuccess = (user, isNewRegistration = false, cloud = null) => {
     setCurUser(user);
     setCurrentUser(user);
+    let localConfig = config;
+    let localSedes = sedes;
 
     if (isNewRegistration) {
       // Configure initial profile for the new psychologist
@@ -141,6 +184,7 @@ export function AppContent() {
       };
       setConfig(newConfig);
       saveToStorage('psicoplus_config_v1', newConfig);
+      localConfig = newConfig;
 
       // Sede inicial del usuario
       if (user.consultorioInicial?.nombre) {
@@ -157,7 +201,15 @@ export function AppContent() {
         ];
         setSedes(newSedes);
         saveToStorage('psicoplus_sedes_v1', newSedes);
+        localSedes = newSedes;
       }
+    }
+
+    if (cloud?.reason === 'confirm-email') {
+      setCloudStatus('confirm-email');
+      toast.showInfo('Te enviamos un correo para confirmar tu cuenta. Hasta entonces, la configuración queda solo en este navegador.');
+    } else {
+      syncFromCloud(user, { config: localConfig, sedes: localSedes, obrasSociales, subscription: storedSubscription });
     }
 
     setViewMode('app');
@@ -168,6 +220,8 @@ export function AppContent() {
     if (confirm('¿Deseas cerrar la sesión actual y volver a la página principal?')) {
       setCurrentUser(DEMO_USER);
       setCurUser(DEMO_USER);
+      closeCloudSession();
+      setCloudStatus('local');
       setViewMode('landing');
     }
   };
@@ -176,16 +230,19 @@ export function AppContent() {
   const handleSaveObrasSociales = (nuevas) => {
     setObrasSociales(nuevas);
     saveToStorage('psicoplus_obras_sociales_v1', nuevas);
+    pushToCloud({ obrasSociales: nuevas });
   };
 
   const handleSaveSedes = (newSedes) => {
     setSedes(newSedes);
     saveToStorage('psicoplus_sedes_v1', newSedes);
+    pushToCloud({ sedes: newSedes });
   };
 
   const handleSaveConfig = (newConfig) => {
     setConfig(newConfig);
     saveToStorage('psicoplus_config_v1', newConfig);
+    pushToCloud({ config: newConfig });
   };
 
   const handleSavePaciente = (pacienteData) => {
@@ -573,6 +630,7 @@ export function AppContent() {
               subscription={subscription}
               onSaveConfig={handleSaveConfig}
               onSaveSedes={handleSaveSedes}
+              cloudStatus={cloudStatus}
               onOpenUpgradeModal={handleOpenUpgrade}
               onSubscriptionUpdated={handlePlanUpdated}
               onOpenLegal={handleOpenLegal}

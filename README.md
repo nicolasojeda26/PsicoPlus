@@ -33,3 +33,14 @@ npm install
 cp .env.example .env    # completar VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY
 npm run dev
 ```
+
+## Configuración guardada en la cuenta
+
+El perfil profesional, los datos de facturación, las sedes, los aranceles de obras sociales y el plan se guardan en Supabase por cuenta, así aparecen en cualquier navegador o dispositivo al iniciar sesión.
+
+1. En Supabase → **SQL Editor**, ejecutar `supabase/migrations/20261104_user_settings.sql`.
+2. En Vercel (y en `.env` local), cargar `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
+3. Opcional: en Supabase → Authentication → Providers → Email, desactivar **Confirm email** para que la sincronización arranque apenas se crea la cuenta.
+
+Las cuentas que existían solo en un navegador se suben a la nube la primera vez que se inicia sesión. El certificado de ARCA sigue guardándose solo en el dispositivo.
+
