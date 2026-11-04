@@ -23,8 +23,11 @@ import {
   FileText,
   Cookie,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Cloud,
+  CloudOff
 } from 'lucide-react';
+import { saveCloudSettings } from '../../services/cloudSettings';
 import { exportFullBackup, resetToDemoData } from '../../services/storage';
 import { ProBadge } from '../Common/ProBadge';
 import { PLANS, PLAN_LIMITS, activatePromoCode, switchPlanDirectly } from '../../services/subscription';
@@ -52,6 +55,7 @@ export const ConfiguracionView = ({
   subscription = { plan: PLANS.FREE },
   onSaveConfig,
   onSaveSedes,
+  cloudStatus = 'local',
   onOpenUpgradeModal,
   onSubscriptionUpdated,
   onOpenLegal
@@ -244,10 +248,36 @@ export const ConfiguracionView = ({
           </p>
         </div>
 
-        {savedSuccess && (
+        {savedSuccess ? (
           <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-semibold border border-emerald-200 animate-fade-in">
             <CheckCircle2 size={15} />
-            <span>¡Cambios guardados con éxito!</span>
+            <span>{cloudStatus === 'synced' || cloudStatus === 'syncing' ? '¡Cambios guardados en tu cuenta!' : '¡Cambios guardados con éxito!'}</span>
+          </div>
+        ) : (
+          <div
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border ${
+              cloudStatus === 'synced' || cloudStatus === 'syncing'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-900'
+                : cloudStatus === 'error'
+                ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900'
+                : 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700'
+            }`}
+            title={
+              cloudStatus === 'confirm-email'
+                ? 'Confirmá tu cuenta desde el correo que te enviamos para guardar la configuración en la nube.'
+                : cloudStatus === 'local'
+                ? 'Iniciá sesión con tu cuenta para que esta configuración quede guardada y aparezca en cualquier dispositivo.'
+                : undefined
+            }
+          >
+            {cloudStatus === 'synced' || cloudStatus === 'syncing' ? <Cloud size={14} /> : <CloudOff size={14} />}
+            <span>
+              {cloudStatus === 'synced' && 'Guardado en tu cuenta'}
+              {cloudStatus === 'syncing' && 'Sincronizando…'}
+              {cloudStatus === 'error' && 'Sin conexión con tu cuenta'}
+              {cloudStatus === 'confirm-email' && 'Confirmá tu email para sincronizar'}
+              {cloudStatus === 'local' && 'Solo en este navegador'}
+            </span>
           </div>
         )}
       </div>
@@ -818,7 +848,7 @@ export const ConfiguracionView = ({
                 const file = e.target.files?.[0];
                 if (!file) return;
                 const reader = new FileReader();
-                reader.onload = (event) => {
+                reader.onload = async (event) => {
                   try {
                     const parsed = JSON.parse(event.target.result);
                     if (parsed.pacientes && parsed.turnos) {
@@ -829,6 +859,8 @@ export const ConfiguracionView = ({
                       if (parsed.liquidaciones) localStorage.setItem('psicoplus_liquidaciones_v1', JSON.stringify(parsed.liquidaciones));
                       if (parsed.facturas) localStorage.setItem('psicoplus_facturas_v1', JSON.stringify(parsed.facturas));
                       if (parsed.config) localStorage.setItem('psicoplus_config_v1', JSON.stringify(parsed.config));
+                      // Si hay sesión, la configuración restaurada también reemplaza la de la cuenta.
+                      await saveCloudSettings({ config: parsed.config, sedes: parsed.sedes, obrasSociales: parsed.obrasSociales });
                       alert('¡Copia de seguridad restaurada con éxito! La página se recargará.');
                       window.location.reload();
                     } else {
