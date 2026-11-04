@@ -22,7 +22,9 @@ const STORAGE_KEYS = {
 export const getStoredData = () => {
   try {
     const sedes = JSON.parse(localStorage.getItem(STORAGE_KEYS.SEDES)) || INITIAL_SEDES;
-    const obrasGuardadas = JSON.parse(localStorage.getItem(STORAGE_KEYS.OBRAS_SOCIALES));
+    const obrasGuardadas = (JSON.parse(localStorage.getItem(STORAGE_KEYS.OBRAS_SOCIALES)) || null)
+      // Renombra la entrada vieja "Unión Personal / Accord Salud" conservando su arancel.
+      ?.map(os => os.id === 'union-personal' && os.sigla === 'ACCORD SALUD' ? { ...os, nombre: 'UNION PERSONAL', sigla: 'UNION PERSONAL' } : os);
     // Suma al catálogo guardado las obras sociales nuevas, sin tocar los aranceles ya cargados.
     const obrasSociales = obrasGuardadas
       ? [

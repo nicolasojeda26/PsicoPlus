@@ -5,8 +5,7 @@ import QRCode from 'qrcode';
 
 // Catálogo de Obras Sociales y Prepagas con datos fiscales.
 // CUITs verificados en noviembre 2026 contra fuentes públicas (constancias, legajos impositivos
-// y sitios oficiales de cada entidad). Accord Salud queda sin CUIT hasta confirmarlo:
-// antes de facturarle, pedile su constancia de inscripción.
+// y sitios oficiales de cada entidad).
 export const OBRAS_SOCIALES_FISCALES = [
   {
     id: 'osde',
@@ -118,15 +117,15 @@ export const OBRAS_SOCIALES_FISCALES = [
   },
   {
     id: 'union-personal',
-    nombre: 'Obra Social del Personal de UPCN / Accord Salud',
-    sigla: 'ACCORD SALUD',
-    cuit: '',
+    nombre: 'Obra Social Unión Personal de la Unión del Personal Civil de la Nación',
+    sigla: 'UNION PERSONAL',
+    cuit: '30-68303222-7',
     condicionIva: 'IVA Exento',
-    domicilioFiscal: 'San Martín 670, CABA',
+    domicilioFiscal: 'Ciudad Autónoma de Buenos Aires',
     nomencladorDefault: '33.01.01',
     exigeAfiliado: true,
     exigeFechasSesiones: true,
-    tipo: 'Obra Social / Prepaga'
+    tipo: 'Obra Social Sindical'
   },
   {
     id: 'omint',

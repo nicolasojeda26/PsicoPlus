@@ -133,9 +133,9 @@ export const INITIAL_OBRAS_SOCIALES = [
   },
   {
     id: 'union-personal',
-    nombre: 'Unión Personal / Accord Salud',
-    sigla: 'ACCORD SALUD',
-    tipo: 'Obra Social / Prepaga',
+    nombre: 'UNION PERSONAL',
+    sigla: 'UNION PERSONAL',
+    tipo: 'Obra Social Sindical',
     arancelSesion: 0, // completar en Liquidaciones → Aranceles
     coseguroRecomendado: 0,
     sesionesPorOrdenDefault: 10,
