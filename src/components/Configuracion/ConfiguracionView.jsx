@@ -72,6 +72,8 @@ export const ConfiguracionView = ({
   const [arcaCred, setArcaCred] = useState(() => getArcaCredenciales());
   const [certPendiente, setCertPendiente] = useState('');
   const [keyPendiente, setKeyPendiente] = useState('');
+  const [certPendienteNombre, setCertPendienteNombre] = useState('');
+  const [keyPendienteNombre, setKeyPendienteNombre] = useState('');
   const [consultorioPinInput, setConsultorioPinInput] = useState('');
   const toast = useToast();
 
@@ -90,7 +92,16 @@ export const ConfiguracionView = ({
         toast.showError('La clave tiene contraseña. Usá la clave sin contraseña con la que generaste el pedido (.csr).');
         return;
       }
-      if (tipo === 'cert') setCertPendiente(txt); else setKeyPendiente(txt);
+      if (tipo === 'cert' && !txt.includes('CERTIFICATE')) {
+        toast.showError(`${file.name} no es un certificado. Elegí el .crt que descargaste de ARCA.`);
+        return;
+      }
+      if (tipo === 'key' && !txt.includes('PRIVATE KEY')) {
+        toast.showError(`${file.name} no es una clave privada. Elegí psicoplus-arca.key.`);
+        return;
+      }
+      if (tipo === 'cert') { setCertPendiente(txt); setCertPendienteNombre(file.name); }
+      else { setKeyPendiente(txt); setKeyPendienteNombre(file.name); }
     } catch (err) {
       toast.showError(err.message);
     } finally {
@@ -109,6 +120,8 @@ export const ConfiguracionView = ({
     setArcaCred(getArcaCredenciales());
     setCertPendiente('');
     setKeyPendiente('');
+    setCertPendienteNombre('');
+    setKeyPendienteNombre('');
     setArcaStatus(null);
     toast.showSuccess('Certificado guardado en este dispositivo. Ahora probá la conexión.');
   };
@@ -472,25 +485,29 @@ export const ConfiguracionView = ({
           </details>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Certificado ARCA (.crt / .pem)</label>
-              <input type="file" accept=".crt,.pem,.cer,.txt" onChange={(e) => handleArchivoArca(e, 'cert')} className="block w-full text-xs" />
-              <span className="text-[11px] text-slate-400">
-                {certPendiente ? 'Certificado listo para guardar' : arcaCred?.cert ? 'Certificado cargado en este dispositivo' : 'Sin certificado'}
-              </span>
-            </div>
-            <div>
-              <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Clave privada (.key)</label>
-              <input type="file" accept=".key,.pem,.txt" onChange={(e) => handleArchivoArca(e, 'key')} className="block w-full text-xs" />
-              <span className="text-[11px] text-slate-400">
-                {keyPendiente ? 'Clave lista para guardar' : arcaCred?.key ? 'Clave cargada en este dispositivo' : 'Sin clave'}
-              </span>
-            </div>
+            {[
+              { tipo: 'cert', titulo: '1. Certificado de ARCA (.crt)', pendiente: certPendienteNombre, guardado: arcaCred?.cert },
+              { tipo: 'key', titulo: '2. Clave privada (.key)', pendiente: keyPendienteNombre, guardado: arcaCred?.key },
+            ].map(({ tipo, titulo, pendiente, guardado }) => (
+              <label
+                key={tipo}
+                className="flex flex-col gap-1 p-3 rounded-xl border-2 border-dashed border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/40 cursor-pointer"
+              >
+                <span className="font-semibold text-slate-800 dark:text-slate-100">{titulo}</span>
+                <span className="inline-flex w-fit items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-semibold">
+                  <Upload size={13} /> Elegir archivo
+                </span>
+                <span className={`text-[11px] ${pendiente ? 'text-teal-700 dark:text-teal-300 font-semibold' : guardado ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                  {pendiente ? `Elegido: ${pendiente}` : guardado ? 'Ya cargado en este navegador' : 'Todavía no elegiste el archivo'}
+                </span>
+                <input type="file" onChange={(e) => handleArchivoArca(e, tipo)} className="sr-only" />
+              </label>
+            ))}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={handleGuardarCredenciales} disabled={!certPendiente && !keyPendiente} className="btn btn-secondary text-xs">
-              Guardar certificado
+            <button type="button" onClick={handleGuardarCredenciales} className="btn btn-primary text-xs">
+              3. Guardar certificado
             </button>
             {arcaCred?.cert && (
               <button type="button" onClick={handleBorrarCredenciales} className="text-xs text-rose-600 dark:text-rose-400 font-semibold hover:underline">
