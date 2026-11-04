@@ -3,7 +3,6 @@
 
 import { supabase } from '../lib/supabase';
 import { todayISO } from '../lib/dates';
-import { SITE_URL } from '../lib/site';
 
 /** Id de la cuenta en la nube del profesional con sesión iniciada (para armar el link). */
 export const getPortalId = async () => {
@@ -13,9 +12,8 @@ export const getPortalId = async () => {
 };
 
 export const portalUrl = (portalId) => {
-  // Los links que se comparten usan siempre el dominio oficial (salvo probando en local).
-  const local = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
-  const base = `${local ? window.location.origin : SITE_URL}/?portal=paciente`;
+  // El link sale con el dominio desde donde se abrió la app (psicoplus.net.ar en producción).
+  const base = `${window.location.origin}/?portal=paciente`;
   return portalId ? `${base}&p=${portalId}` : base;
 };
 
