@@ -43,6 +43,7 @@ export const PortalTurnosView = ({
   onDeleteTurno,
   onBackToApp,
   portalId = null,
+  onConnectAccount = null,
   isStandalone = false
 }) => {
   const [step, setStep] = useState(1);
@@ -89,7 +90,11 @@ export const PortalTurnosView = ({
     setSelectedHora('');
   };
 
+  // Sin la cuenta conectada el link no puede mostrar los datos reales: primero se conecta.
+  const necesitaConectar = !portalId && Boolean(onConnectAccount);
+
   const handleCopyLink = () => {
+    if (necesitaConectar) { onConnectAccount(); return; }
     const url = portalUrl(portalId);
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
@@ -97,6 +102,7 @@ export const PortalTurnosView = ({
   };
 
   const handleShareWhatsapp = () => {
+    if (necesitaConectar) { onConnectAccount(); return; }
     const url = portalUrl(portalId);
     const msg = `¡Hola! Te comparto el enlace para solicitar tu turno de psicología online con ${config.nombre || 'la Lic. Virna Toledo'}: ${url}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
@@ -193,10 +199,15 @@ export const PortalTurnosView = ({
           {!portalId && (
             <div className="flex items-start gap-2 p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900 text-[13px]">
               <AlertCircle size={16} className="mt-0.5 shrink-0" />
-              <span>
-                Para que el link muestre tus sedes y horarios en el celular de tus pacientes, iniciá sesión con tu cuenta.
-                Sin sesión, el link solo funciona en este navegador.
+              <span className="flex-1">
+                Para que el link muestre tus sedes y horarios en el celular de tus pacientes, conectá tu cuenta.
+                Hasta entonces el link no tiene tus datos.
               </span>
+              {onConnectAccount && (
+                <button type="button" onClick={onConnectAccount} className="btn btn-primary text-xs shrink-0">
+                  Conectar mi cuenta
+                </button>
+              )}
             </div>
           )}
 

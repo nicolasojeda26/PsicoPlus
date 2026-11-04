@@ -20,12 +20,13 @@ export const AuthModal = ({
   isOpen, 
   onClose, 
   initialMode = 'register', // 'register' | 'login'
+  initialEmail = '',
   onAuthSuccess 
 }) => {
   const [mode, setMode] = useState(initialMode);
   const [formData, setFormData] = useState({
     nombre: '',
-    email: '',
+    email: initialEmail,
     password: '',
     matriculaProvincial: '',
     colegio: '',
