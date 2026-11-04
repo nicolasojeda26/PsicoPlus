@@ -559,6 +559,56 @@ export const ConfiguracionView = ({
             </div>
           </div>
 
+          <div className="pt-1">
+            <p className="font-semibold text-slate-700 dark:text-slate-300 mb-2">Datos que se imprimen en la factura (copialos de una factura tuya de ARCA)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Nombre en la factura</label>
+                <input
+                  type="text"
+                  value={formData.nombreFactura || ''}
+                  onChange={(e) => setFormData({ ...formData, nombreFactura: e.target.value })}
+                  className="input-field"
+                  placeholder="VIRNA ORIANA TOLEDO"
+                />
+                <span className="text-[11px] text-slate-400">Arriba a la izquierda, en mayúsculas</span>
+              </div>
+              <div>
+                <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Razón social</label>
+                <input
+                  type="text"
+                  value={formData.razonSocial || ''}
+                  onChange={(e) => setFormData({ ...formData, razonSocial: e.target.value })}
+                  className="input-field"
+                  placeholder="TOLEDO VIRNA ORIANA"
+                />
+                <span className="text-[11px] text-slate-400">Tal como figura en ARCA</span>
+              </div>
+              <div>
+                <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Domicilio comercial</label>
+                <input
+                  type="text"
+                  value={formData.domicilioComercial || ''}
+                  onChange={(e) => setFormData({ ...formData, domicilioComercial: e.target.value })}
+                  className="input-field"
+                  placeholder="Calle 123 - Corrientes, Corrientes"
+                />
+                <span className="text-[11px] text-slate-400">El de tu factura de ARCA</span>
+              </div>
+              <div>
+                <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Fecha de inicio de actividades</label>
+                <input
+                  type="text"
+                  value={formData.inicioActividades || ''}
+                  onChange={(e) => setFormData({ ...formData, inicioActividades: e.target.value })}
+                  className="input-field"
+                  placeholder="01/07/2025"
+                />
+                <span className="text-[11px] text-slate-400">DD/MM/AAAA</span>
+              </div>
+            </div>
+          </div>
+
           {arcaStatus && (
             <div className={`p-3 rounded-xl border text-xs font-medium flex items-center gap-2 ${
               arcaStatus.ok 

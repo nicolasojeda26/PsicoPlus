@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import { generarQrArcaDataUrl, codigoTipoComprobante, partesNumeroComprobante, estadoFiscalFactura } from './arcaService';
+import { generarQrArcaDataUrl, codigoTipoComprobante, partesNumeroComprobante, estadoFiscalFactura, documentoReceptor } from './arcaService';
 
 export const generateConstanciaPDF = ({ paciente, turno, config, sede }) => {
   const doc = new jsPDF({
@@ -169,307 +169,206 @@ export const generatePlanillaLiquidacionPDF = ({ obraSocial, periodo, pacientes,
   doc.save(`Liquidacion_${obraSocial.sigla}_${periodo.replace(/\s+/g, '_')}.pdf`);
 };
 
-export const generateFacturaPDF = async ({ factura = {}, config = {}, paciente = {}, obraSocial = {} }) => {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+// Factura con el mismo diseño que el comprobante que genera ARCA ("Comprobantes en línea"):
+// tres copias (Original, Duplicado, Triplicado), Helvetica, bloques con borde negro.
+export const generateFacturaPDF = async ({ factura = {}, config = {} }) => {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
   const tipoCodigo = factura.tipoComprobanteCodigo || codigoTipoComprobante(factura.tipoComprobante);
   const letra = tipoCodigo === 6 ? 'B' : 'C';
-  const codigoComprobante = `COD. ${String(tipoCodigo).padStart(3, '0')}`;
+  const titulo = tipoCodigo === 15 || tipoCodigo === 9 ? 'RECIBO' : 'FACTURA';
   const estadoFiscal = estadoFiscalFactura(factura);
-  const cuitEmisor = factura.cuitEmisor || config.cuit || '';
+  const cuitEmisor = String(factura.cuitEmisor || config.cuit || '').replace(/\D/g, '');
   const numeracion = partesNumeroComprobante(factura.numeroFactura, factura.puntoVenta || config.puntoVenta);
+  const receptor = factura.docTipoReceptor
+    ? { docTipo: Number(factura.docTipoReceptor), docNro: String(factura.pacienteDni || '').replace(/\D/g, '') }
+    : documentoReceptor(factura.pacienteDni);
+  const etiquetaDoc = receptor.docTipo === 80 ? 'CUIT:' : receptor.docTipo === 96 ? 'DNI:' : receptor.docTipo === 86 ? 'CUIL:' : 'Doc.:';
+  const nroDoc = receptor.docTipo === 99 ? '' : receptor.docNro;
 
-  // Marco exterior
-  doc.setDrawColor(13, 148, 136); // Teal / Emerald
-  doc.setLineWidth(0.4);
-  doc.rect(14, 12, 182, 272);
+  const fecha = (iso) => {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso || '');
+  };
+  const num = (n) => Number(n || 0).toFixed(2).replace('.', ',');
+  const CONDICION_IVA_TEXTO = {
+    'Responsable Inscripto': 'IVA Responsable Inscripto',
+    'IVA Exento': 'IVA Sujeto Exento',
+    'Monotributo': 'Responsable Monotributo',
+  };
+  const condIvaReceptor = CONDICION_IVA_TEXTO[factura.condicionIvaReceptor] || factura.condicionIvaReceptor || 'Consumidor Final';
 
-  // Cuadro superior central con letra del comprobante
-  doc.setFillColor(240, 253, 250);
-  doc.rect(98, 12, 14, 15, 'FD');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(13, 148, 136);
-  doc.text(letra, 105, 22, { align: 'center' });
-  doc.setFontSize(6);
-  doc.setTextColor(100, 116, 139);
-  doc.text(codigoComprobante, 105, 26, { align: 'center' });
+  const nombreFactura = (config.nombreFactura || config.nombre || '').toUpperCase();
+  const razonSocial = (config.razonSocial || config.nombre || '').toUpperCase();
+  const items = factura.items?.length ? factura.items : [{ descripcion: factura.concepto || '', cantidad: 1, precioUnitario: factura.total, total: factura.total }];
+  const total = Number(factura.total || 0);
 
-  // Banner ORIGINAL
-  doc.setFontSize(7);
-  doc.setTextColor(100, 116, 139);
-  doc.setFont('helvetica', 'bold');
-  doc.text('ORIGINAL', 105, 10, { align: 'center' });
-
-  // Línea divisoria vertical en cabecera
-  doc.setDrawColor(226, 232, 240);
-  doc.line(105, 27, 105, 68);
-
-  // Cabecera Izquierda: Datos del Profesional Emisor
-  doc.setTextColor(15, 23, 42);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text(config.nombre || 'Lic. Virna Toledo', 18, 22);
-
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(71, 85, 105);
-  doc.text(`${config.titulo || 'Licenciada en Psicología'} • ${config.matriculaProvincial || 'M.P. 1842'}`, 18, 28);
-  doc.text(config.colegio || 'Colegio de Psicólogos de Corrientes', 18, 33);
-  doc.text(`Domicilio Comercial: ${config.domicilioComercial || 'Pellegrini 1250, 1° Piso - Corrientes'}`, 18, 38);
-  doc.text(`Condición Frente al IVA: ${config.condicionIva || 'Responsable Monotributo'}`, 18, 43);
-  doc.text(`Contacto: ${config.telefono || ''} • ${config.email || ''}`, 18, 48);
-
-  // Cabecera Derecha: Comprobante & Datos Fiscales ARCA
-  doc.setTextColor(15, 23, 42);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text(factura.tipoComprobante?.toUpperCase() || 'FACTURA C', 115, 22);
-
-  doc.setFontSize(8.5);
-  doc.setTextColor(15, 23, 42);
-  const ptoVta = String(numeracion.puntoVenta).padStart(4, '0');
-  const nroComp = String(numeracion.numero).padStart(8, '0');
-  doc.text(`Punto de Venta: ${ptoVta}   Comp. Nro: ${nroComp}`, 115, 28);
-  doc.text(`Fecha de Emisión: ${factura.fechaEmision || new Date().toISOString().split('T')[0]}`, 115, 34);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(71, 85, 105);
-  doc.text(`CUIT Emisor: ${cuitEmisor || 'SIN CONFIGURAR'}`, 115, 40);
-  doc.text(`Ingresos Brutos: ${config.ingresosBrutos || config.cuit || 'S/D'}`, 115, 45);
-  doc.text(`Fecha de Inicio de Actividades: ${config.inicioActividades || '15/03/2019'}`, 115, 50);
-
-  // Período de Prestación de Servicios (Exigido por ARCA para Servicios de Salud)
-  doc.setFillColor(241, 245, 249);
-  doc.rect(14, 55, 182, 13, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(51, 65, 85);
-  doc.text('PERÍODO DE FACTURACIÓN DE SERVICIOS:', 18, 60);
-
-  doc.setFont('helvetica', 'normal');
-  const fechaDesde = factura.fechaServicioDesde || factura.fechaEmision || '2026-09-01';
-  const fechaHasta = factura.fechaServicioHasta || factura.fechaEmision || '2026-09-30';
-  const fechaVtoPago = factura.fechaVencimientoPago || factura.vencimientoCae || '2026-10-10';
-
-  doc.text(`Fecha Desde: ${fechaDesde}`, 75, 60);
-  doc.text(`Fecha Hasta: ${fechaHasta}`, 115, 60);
-  doc.text(`Fecha Vto. para el Pago: ${fechaVtoPago}`, 150, 60);
-
-  if (factura.periodoFacturado) {
-    doc.text(`Concepto / Período: ${factura.periodoFacturado}`, 18, 65);
-  }
-
-  // Línea divisoria
-  doc.setDrawColor(13, 148, 136);
-  doc.setLineWidth(0.3);
-  doc.line(14, 68, 196, 68);
-
-  // Sección Receptor / Paciente / Obra Social
-  doc.setFillColor(248, 250, 252);
-  doc.rect(14, 68, 182, 30, 'F');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(15, 23, 42);
-  doc.text('DATOS DEL RECEPTOR / PACIENTE / OBRA SOCIAL', 18, 73);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.text('Nombre / Razón Social:', 18, 79);
-  doc.setFont('helvetica', 'bold');
-  doc.text(factura.pacienteNombre || paciente?.nombreCompleto || 'Consumidor Final', 58, 79);
-
-  doc.setFont('helvetica', 'normal');
-  doc.text('DNI / CUIT / CUIL:', 18, 85);
-  doc.setFont('helvetica', 'bold');
-  doc.text(factura.pacienteDni || paciente?.dni || 'Sin especificar', 58, 85);
-
-  doc.setFont('helvetica', 'normal');
-  doc.text('Condición Frente al IVA:', 18, 91);
-  doc.text(factura.condicionIvaReceptor || 'Consumidor Final', 58, 91);
-
-  doc.text('Domicilio:', 115, 79);
-  doc.text(factura.pacienteDomicilio || paciente?.direccion || 'Corrientes Capital', 135, 79);
-
-  doc.text('Condición de Pago:', 115, 85);
-  doc.text(factura.condicionVenta || 'Transferencia Bancaria', 145, 85);
-
-  // Si tiene datos de Obra Social o número de afiliado
-  const osNombre = factura.obraSocialNombre || obraSocial?.nombre || paciente?.obraSocialId;
-  const nroAfiliado = factura.numeroAfiliado || paciente?.numeroAfiliado;
-  if (osNombre && osNombre !== 'particular') {
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(13, 148, 136);
-    doc.text(`Cobertura: ${String(osNombre).toUpperCase()} ${nroAfiliado ? `• Afiliado/a Nº: ${nroAfiliado}` : ''}`, 115, 91);
-  }
-
-  // Divisor tabla ítems
-  doc.setDrawColor(203, 213, 225);
-  doc.line(14, 98, 196, 98);
-
-  // Encabezado Tabla de Prestaciones
-  doc.setFillColor(15, 23, 42);
-  doc.rect(14, 100, 182, 8, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.text('CÓD. NOMENCLADOR / DETALLE DE LA PRESTACIÓN PSICOLÓGICA', 18, 105);
-  doc.text('CANTIDAD', 125, 105, { align: 'center' });
-  doc.text('PRECIO UNITARIO', 155, 105, { align: 'right' });
-  doc.text('SUBTOTAL', 190, 105, { align: 'right' });
-
-  // Filas de Ítems
-  let currentY = 113;
-  doc.setTextColor(30, 41, 59);
-  doc.setFont('helvetica', 'normal');
-
-  const items = (factura.items && factura.items.length > 0) 
-    ? factura.items 
-    : [{ descripcion: factura.concepto || 'Sesión de Psicoterapia Individual (Cód. 33.01.01)', cantidad: 1, precioUnitario: factura.total, total: factura.total }];
-
-  items.forEach((item, index) => {
-    if (index % 2 === 1) {
-      doc.setFillColor(248, 250, 252);
-      doc.rect(14, currentY - 5, 182, 7, 'F');
-    }
-
-    doc.setFontSize(8);
-    doc.text(item.descripcion.substring(0, 65), 18, currentY);
-    doc.text(String(item.cantidad || 1), 125, currentY, { align: 'center' });
-    doc.text(`$${Number(item.precioUnitario || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, 155, currentY, { align: 'right' });
-    doc.text(`$${Number(item.total || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, 190, currentY, { align: 'right' });
-    
-    currentY += 8;
+  const qrDataUrl = estadoFiscal === 'sin_validez' ? null : await generarQrArcaDataUrl({
+    cuitEmisor,
+    puntoVenta: numeracion.puntoVenta,
+    tipoComprobante: tipoCodigo,
+    numeroComprobante: factura.numeroFactura,
+    importe: total,
+    fechaEmision: factura.fechaEmision,
+    tipoDocReceptor: receptor.docTipo,
+    nroDocReceptor: receptor.docNro,
+    cae: factura.cae,
   });
 
-  // Observaciones & Leyenda de Reintegro de Obra Social
-  currentY += 3;
-  doc.setDrawColor(226, 232, 240);
-  doc.line(18, currentY, 192, currentY);
-  currentY += 5;
+  const X0 = 5.3;
+  const X1 = 204.7;
+  const W = X1 - X0;
+  const negrita = (size) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(size); };
+  const normal = (size) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(size); };
+  const par = (label, valor, x, y, gap = 1.5, sizeL = 8, sizeV = 8) => {
+    negrita(sizeL); doc.text(label, x, y);
+    const w = doc.getTextWidth(label);
+    normal(sizeV); doc.text(String(valor ?? ''), x + w + gap, y);
+  };
 
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  const obsTexto = factura.observaciones || 'Prestaciones de salud mental.';
-  const obsSplits = doc.splitTextToSize(`Observaciones: ${obsTexto}`, 174);
-  doc.text(obsSplits, 18, currentY);
+  ['ORIGINAL', 'DUPLICADO', 'TRIPLICADO'].forEach((copia, idx) => {
+    if (idx > 0) doc.addPage();
+    doc.setDrawColor(0); doc.setTextColor(0); doc.setLineWidth(0.3);
 
-  // Totales
-  const totalsY = 195;
-  doc.setDrawColor(226, 232, 240);
-  doc.line(14, totalsY, 196, totalsY);
+    // Fila ORIGINAL / DUPLICADO / TRIPLICADO
+    doc.rect(X0, 8, W, 9.8);
+    negrita(13); doc.text(copia, 105, 14.6, { align: 'center' });
 
-  doc.setFillColor(240, 253, 250);
-  doc.rect(115, totalsY + 4, 81, 24, 'FD');
+    // Encabezado
+    doc.rect(X0, 17.8, W, 42.2);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(97, 17.8, 17, 14.5, 'FD');
+    negrita(26); doc.text(letra, 105.5, 27.2, { align: 'center' });
+    negrita(6.5); doc.text(`COD. ${String(tipoCodigo).padStart(3, '0')}`, 105.5, 30.6, { align: 'center' });
+    doc.line(105.5, 32.3, 105.5, 60);
 
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(71, 85, 105);
-  doc.text('Subtotal:', 120, totalsY + 11);
-  doc.text(`$${Number(factura.subtotal || factura.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, 190, totalsY + 11, { align: 'right' });
+    // Emisor (izquierda)
+    negrita(10.5); doc.text(nombreFactura, 51, 27, { align: 'center' });
+    par('Razón Social:', razonSocial, 7.6, 40.5, 1.5, 9, 9);
+    negrita(9); doc.text('Domicilio Comercial:', 7.6, 48.3);
+    const domX = 7.6 + doc.getTextWidth('Domicilio Comercial:') + 1.5;
+    normal(9);
+    const domLines = doc.splitTextToSize(config.domicilioComercial || '', 103 - domX);
+    domLines.slice(0, 2).forEach((l, i) => doc.text(l, i === 0 ? domX : (domX + 103) / 2, 48.3 + i * 3.6, i === 0 ? {} : { align: 'center' }));
+    negrita(9); doc.text('Condición frente al IVA:', 7.6, 57.2);
+    doc.text(config.condicionIva || 'Responsable Monotributo', 7.6 + doc.getTextWidth('Condición frente al IVA:') + 2.5, 57.2);
 
-  if (factura.descuento && factura.descuento > 0) {
-    doc.text('Descuento:', 120, totalsY + 16);
-    doc.text(`-$${Number(factura.descuento).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, 190, totalsY + 16, { align: 'right' });
-  }
+    // Comprobante (derecha)
+    negrita(20); doc.text(titulo, 120, 27);
+    negrita(9); doc.text('Punto de Venta:', 120, 34.6);
+    doc.setFontSize(10); doc.text(String(numeracion.puntoVenta).padStart(5, '0'), 146.5, 34.6);
+    doc.setFontSize(9); doc.text('Comp. Nro:', 162.5, 34.6);
+    doc.setFontSize(10); doc.text(String(numeracion.numero).padStart(8, '0'), 182, 34.6);
+    negrita(9); doc.text('Fecha de Emisión:', 120, 40);
+    doc.setFontSize(10); doc.text(fecha(factura.fechaEmision), 151, 40);
+    par('CUIT:', cuitEmisor, 120, 48.3, 1.5, 9, 9);
+    par('Ingresos Brutos:', String(config.ingresosBrutos || cuitEmisor).replace(/\s*\(.*\)\s*$/, ''), 120, 52.3, 1.5, 9, 9);
+    negrita(9); doc.text('Fecha de Inicio de Actividades:', 120, 56.6);
+    normal(9); doc.text(config.inicioActividades || '', 171.5, 56.6);
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(13, 148, 136);
-  doc.text('Importe Total:', 120, totalsY + 23);
-  doc.text(`$${Number(factura.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, 190, totalsY + 23, { align: 'right' });
+    // Período
+    doc.rect(X0, 60, W, 7.4);
+    negrita(9.5); doc.text('Período Facturado Desde:', 7.6, 65);
+    normal(9.5); doc.text(fecha(factura.fechaServicioDesde), 56, 65);
+    negrita(9.5); doc.text('Hasta:', 82, 65);
+    normal(9.5); doc.text(fecha(factura.fechaServicioHasta), 93.5, 65);
+    negrita(9.5); doc.text('Fecha de Vto. para el pago:', 128, 65);
+    normal(9.5); doc.text(fecha(factura.fechaVencimientoPago), 174, 65);
 
-  // Cuadro Fiscal Inferior ARCA con Código QR Oficial (RG 4291)
-  const caeY = 228;
-  doc.setDrawColor(203, 213, 225);
-  doc.line(14, caeY, 196, caeY);
+    // Receptor
+    doc.rect(X0, 68.3, W, 22.2);
+    par(etiquetaDoc, nroDoc, 7.6, 72, 1.5, 9, 9);
+    negrita(8); doc.text('Apellido y Nombre / Razón Social:', 124, 72, { align: 'right' });
+    normal(8);
+    const nomLines = doc.splitTextToSize(String(factura.pacienteNombre || '').toUpperCase(), 79);
+    nomLines.slice(0, 2).forEach((l, i) => doc.text(l, i === 0 ? 124.5 : 164, 72 + i * 3, i === 0 ? {} : { align: 'center' }));
+    negrita(8); doc.text('Condición frente al IVA:', 7.6, 77.8);
+    normal(8); doc.text(condIvaReceptor, 46, 77.8);
+    negrita(8); doc.text('Domicilio:', 124, 77.8, { align: 'right' });
+    normal(8); doc.text(doc.splitTextToSize(factura.pacienteDomicilio || '', 79)[0] || '', 124.5, 77.8);
+    negrita(8); doc.text('Condición de venta:', 7.6, 84.7);
+    normal(8); doc.text(factura.condicionVenta || 'Contado', 40, 84.7);
 
-  // Generar Código QR Oficial de ARCA
-  try {
-    const qrDataUrl = estadoFiscal === 'sin_validez' ? null : await generarQrArcaDataUrl({
-      cuitEmisor,
-      puntoVenta: numeracion.puntoVenta,
-      tipoComprobante: tipoCodigo,
-      numeroComprobante: factura?.numeroFactura,
-      importe: factura?.total || 0,
-      fechaEmision: factura?.fechaEmision,
-      tipoDocReceptor: factura?.docTipoReceptor,
-      nroDocReceptor: factura?.pacienteDni,
-      cae: factura?.cae
+    // Tabla de ítems
+    const cols = [
+      { t: 'Código', x0: 5.3, x1: 19 },
+      { t: 'Producto / Servicio', x0: 19, x1: 69 },
+      { t: 'Cantidad', x0: 69, x1: 92 },
+      { t: 'U. Medida', x0: 92, x1: 106.5 },
+      { t: 'Precio Unit.', x0: 106.5, x1: 135.5 },
+      { t: '% Bonif', x0: 135.5, x1: 146.8 },
+      { t: 'Imp. Bonif.', x0: 146.8, x1: 172 },
+      { t: 'Subtotal', x0: 172, x1: 204.7 },
+    ];
+    doc.setFillColor(204, 204, 204);
+    doc.rect(X0, 91.8, W, 6.2, 'FD');
+    cols.forEach((c, i) => {
+      if (i > 0) doc.line(c.x0, 91.8, c.x0, 98);
+      negrita(i === 1 || i === 0 ? 8 : 7.5);
+      if (i <= 1) doc.text(c.t, c.x0 + 1.6, 96); else doc.text(c.t, (c.x0 + c.x1) / 2, 96, { align: 'center' });
     });
 
-    if (qrDataUrl) {
-      // Dibujar Código QR de ARCA (32x32 mm)
-      doc.addImage(qrDataUrl, 'PNG', 18, caeY + 4, 32, 32);
+    let y = 101.8;
+    normal(8);
+    items.forEach((it) => {
+      const cant = Number(it.cantidad || 1);
+      const precio = Number(it.precioUnitario ?? it.total ?? 0);
+      const lineas = doc.splitTextToSize(String(it.descripcion || ''), 47);
+      if (it.codigo) doc.text(String(it.codigo), 7.6, y);
+      lineas.forEach((l, i) => doc.text(l, 20.2, y + i * 3.4));
+      doc.text(num(cant), 91, y, { align: 'right' });
+      normal(7); doc.text('unidades', 94.5, y); normal(8);
+      doc.text(num(precio), 134.5, y, { align: 'right' });
+      doc.text('0,00', 138, y);
+      doc.text('0,00', 171, y, { align: 'right' });
+      doc.text(num(it.total ?? cant * precio), 203.5, y, { align: 'right' });
+      y += Math.max(1, lineas.length) * 3.4 + 2;
+    });
+
+    // Totales
+    doc.rect(X0, 182.3, W, 33);
+    negrita(9.5);
+    doc.text('Subtotal: $', 173, 197, { align: 'right' });
+    doc.text(num(total), 202, 197, { align: 'right' });
+    doc.text('Importe Otros Tributos: $', 173, 203.3, { align: 'right' });
+    doc.text('0,00', 202, 203.3, { align: 'right' });
+    negrita(10.5);
+    doc.text('Importe Total: $', 173, 209.8, { align: 'right' });
+    doc.text(num(total), 202, 209.8, { align: 'right' });
+
+    if (estadoFiscal !== 'valida') {
+      doc.setTextColor(200, 0, 0);
+      negrita(9);
+      doc.text(
+        estadoFiscal === 'prueba' ? ['COMPROBANTE DE PRUEBA (HOMOLOGACIÓN)', 'SIN VALIDEZ FISCAL'] : ['DOCUMENTO NO VÁLIDO COMO FACTURA', 'SIN CAE DE ARCA'],
+        9, 192,
+      );
+      doc.setTextColor(0);
     }
-  } catch (qrErr) {
-    console.warn('No se pudo estampar el código QR en el PDF:', qrErr);
-  }
 
-  // Texto Fiscal ARCA al lado del QR
-  doc.setTextColor(15, 23, 42);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('ARCA', 54, caeY + 9);
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(71, 85, 105);
-  doc.text('Agencia de Recaudación y Control Aduanero', 54, caeY + 13);
-  doc.text(estadoFiscal === 'valida' ? 'Comprobante Autorizado' : estadoFiscal === 'prueba' ? 'Autorizado en homologación (prueba)' : 'Comprobante NO autorizado por ARCA', 54, caeY + 17);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(15, 23, 42);
-  if (estadoFiscal !== 'sin_validez') {
-    doc.text(`CAE Nº: ${factura.cae}`, 54, caeY + 24);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.text(`Fecha de Vto. de CAE: ${factura.vencimientoCae || '-'}`, 54, caeY + 29);
-  } else {
-    doc.text('CAE Nº: -', 54, caeY + 24);
-  }
-
-  // Marca de agua cuando el comprobante no tiene validez fiscal
-  if (estadoFiscal !== 'valida') {
-    doc.setTextColor(220, 38, 38);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
+    // Pie: QR, leyendas, página y CAE
+    if (qrDataUrl) doc.addImage(qrDataUrl, 'PNG', 8.8, 231.5, 25, 25);
+    negrita(17); doc.text('ARCA', 39.7, 236.6);
+    normal(3.6); doc.text(['AGENCIA DE RECAUDACIÓN', 'Y CONTROL ADUANERO'], 39.7, 238.6);
+    doc.setFont('helvetica', 'bolditalic'); doc.setFontSize(9);
     doc.text(
-      estadoFiscal === 'prueba'
-        ? 'COMPROBANTE DE PRUEBA (HOMOLOGACIÓN ARCA) · SIN VALIDEZ FISCAL'
-        : 'DOCUMENTO NO VÁLIDO COMO FACTURA · SIN CAE DE ARCA',
-      105, caeY - 3, { align: 'center' }
+      estadoFiscal === 'valida' ? 'Comprobante Autorizado' : estadoFiscal === 'prueba' ? 'Autorizado en homologación (prueba)' : 'Comprobante NO autorizado',
+      39.7, 245,
     );
-    doc.setTextColor(15, 23, 42);
-  }
+    doc.setFontSize(5.8);
+    doc.text('Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación', 39.7, 251);
+    negrita(9); doc.text('Pág. 1/1', 97.5, 231);
+    if (estadoFiscal !== 'sin_validez') {
+      negrita(10); doc.text('CAE N°:', 153, 230);
+      normal(10); doc.text(String(factura.cae), 168.5, 230);
+      negrita(10); doc.text('Fecha de Vto. de CAE:', 129.3, 235.3);
+      normal(10); doc.text(fecha(factura.vencimientoCae), 168, 235.3);
+    }
+  });
 
-  // Firma y Matrícula Profesional (Derecha)
-  doc.setDrawColor(148, 163, 184);
-  doc.line(140, caeY + 22, 188, caeY + 22);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(15, 23, 42);
-  doc.text(config?.nombre || 'Lic. Virna Toledo', 164, caeY + 26, { align: 'center' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text(config?.matriculaProvincial || 'M.P. 1842', 164, caeY + 30, { align: 'center' });
-  doc.text(config?.colegio || 'Colegio de Psicólogos', 164, caeY + 34, { align: 'center' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
-  doc.setTextColor(148, 163, 184);
-  doc.text('Comprobante generado con PsicoPlus', 105, 279, { align: 'center' });
-
-  const safeNumero = String(factura?.numeroFactura || '0001').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const safePaciente = String(factura?.pacienteNombre || 'Paciente').replace(/[^a-zA-Z0-9_-]/g, '_');
-  doc.save(`Factura_${safeNumero}_${safePaciente}.pdf`);
+  const pv = String(numeracion.puntoVenta).padStart(5, '0');
+  const nro = String(numeracion.numero).padStart(8, '0');
+  doc.save(`${cuitEmisor || 'factura'}_${String(tipoCodigo).padStart(3, '0')}_${pv}_${nro}.pdf`);
 };
 
 
