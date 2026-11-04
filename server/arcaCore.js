@@ -242,7 +242,23 @@ export const ultimoAutorizado = async ({ ambiente, auth, puntoVenta, tipoComprob
   return Number(r.CbteNro || 0);
 };
 
-const TIPOS_SOPORTADOS = { 11: 'Factura C', 15: 'Recibo C' };
+/** Consulta un comprobante ya autorizado (FECompConsultar). */
+export const consultarComprobante = async ({ ambiente, auth, puntoVenta, tipoComprobante, numero }) => {
+  const r = await callWsfe(ambiente, 'FECompConsultar',
+    `${authXml(auth)}<ar:FeCompConsReq><ar:CbteTipo>${Number(tipoComprobante)}</ar:CbteTipo><ar:CbteNro>${Number(numero)}</ar:CbteNro><ar:PtoVta>${Number(puntoVenta)}</ar:PtoVta></ar:FeCompConsReq>`);
+  lanzarSiErrores(r, 'No se pudo consultar el comprobante');
+  const g = r.ResultGet || {};
+  return {
+    puntoVenta: Number(g.PtoVta), tipoComprobante: Number(g.CbteTipo), numero: Number(g.CbteDesde),
+    fecha: fechaArca(g.CbteFch), docTipo: Number(g.DocTipo), docNro: String(g.DocNro),
+    total: Number(g.ImpTotal), concepto: Number(g.Concepto),
+    servicioDesde: fechaArca(g.FchServDesde), servicioHasta: fechaArca(g.FchServHasta), vtoPago: fechaArca(g.FchVtoPago),
+    condicionIvaReceptorId: g.CondicionIVAReceptorId != null ? Number(g.CondicionIVAReceptorId) : null,
+    cae: String(g.CodAutorizacion || ''), resultado: String(g.Resultado || ''),
+  };
+};
+
+const TIPOS_SOPORTADOS = { 11: 'Factura C', 13: 'Nota de Crédito C', 15: 'Recibo C' };
 const DOC_TIPOS = { 80: 'CUIT', 86: 'CUIL', 96: 'DNI', 99: 'Consumidor Final' };
 const CONDICIONES_IVA_RECEPTOR = [1, 4, 5, 6, 7, 13, 15, 16];
 
@@ -258,7 +274,12 @@ const importe = (n) => Number(Number(n || 0).toFixed(2));
 export const armarDetalle = (c, numero) => {
   const tipo = Number(c.tipoComprobante);
   if (!TIPOS_SOPORTADOS[tipo]) {
-    throw new ArcaError('Por ahora solo se pueden autorizar Factura C (11) y Recibo C (15), que son los de monotributistas y exentos.', { code: 'validacion' });
+    throw new ArcaError('Por ahora solo se pueden autorizar Factura C (11), Nota de Crédito C (13) y Recibo C (15), que son los de monotributistas y exentos.', { code: 'validacion' });
+  }
+  // Una nota de crédito tiene que indicar qué comprobante anula.
+  const asoc = c.comprobanteAsociado;
+  if (tipo === 13 && !(asoc?.tipo && asoc?.puntoVenta && asoc?.numero)) {
+    throw new ArcaError('La nota de crédito tiene que indicar la factura que anula.', { code: 'validacion' });
   }
   const docTipo = Number(c.docTipo);
   if (!DOC_TIPOS[docTipo]) throw new ArcaError('Tipo de documento del receptor inválido.', { code: 'validacion' });
@@ -286,6 +307,10 @@ export const armarDetalle = (c, numero) => {
     + `<ar:FchServDesde>${desde}</ar:FchServDesde><ar:FchServHasta>${hasta}</ar:FchServHasta><ar:FchVtoPago>${vtoPago}</ar:FchVtoPago>`
     + `<ar:MonId>PES</ar:MonId><ar:MonCotiz>1</ar:MonCotiz>`
     + `<ar:CondicionIVAReceptorId>${condIva}</ar:CondicionIVAReceptorId>`
+    + (asoc ? `<ar:CbtesAsoc><ar:CbteAsoc><ar:Tipo>${Number(asoc.tipo)}</ar:Tipo><ar:PtoVta>${Number(asoc.puntoVenta)}</ar:PtoVta><ar:Nro>${Number(asoc.numero)}</ar:Nro>`
+      + (asoc.cuit ? `<ar:Cuit>${String(asoc.cuit).replace(/\D/g, '')}</ar:Cuit>` : '')
+      + (asoc.fecha ? `<ar:CbteFch>${aYYYYMMDD(asoc.fecha, 'fecha del comprobante asociado')}</ar:CbteFch>` : '')
+      + `</ar:CbteAsoc></ar:CbtesAsoc>` : '')
     + `</ar:FECAEDetRequest>`;
 };
 

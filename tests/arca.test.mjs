@@ -75,3 +75,9 @@ test('valida antes de llamar a ARCA', async () => {
   await assert.rejects(autorizar({ ambiente: 'homologacion', auth, comprobante: { ...comprobante, total: 0 } }), /mayor a \$0/);
   assert.equal(llamadas.length, 0);
 });
+
+test('nota de crédito C lleva el comprobante asociado después de la condición de IVA', () => {
+  const xml = armarDetalle({ ...comprobante, tipoComprobante: 13, comprobanteAsociado: { tipo: 11, puntoVenta: 2, numero: 1, cuit: '30-68303222-7', fecha: '2026-11-04' } }, 1);
+  assert.match(xml, /<\/ar:CondicionIVAReceptorId><ar:CbtesAsoc><ar:CbteAsoc><ar:Tipo>11<\/ar:Tipo><ar:PtoVta>2<\/ar:PtoVta><ar:Nro>1<\/ar:Nro><ar:Cuit>30683032227<\/ar:Cuit><ar:CbteFch>20261104<\/ar:CbteFch><\/ar:CbteAsoc><\/ar:CbtesAsoc>/);
+  assert.throws(() => armarDetalle({ ...comprobante, tipoComprobante: 13 }, 1), /factura que anula/);
+});
