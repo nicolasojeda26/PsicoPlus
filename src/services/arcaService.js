@@ -161,7 +161,11 @@ export const NOMENCLADOR_SALUD_MENTAL = [
   { codigo: '33.01.11', descripcion: 'Evaluación Psicológica / Psicodiagnóstico (Batería)', duracionMin: 60 },
   { codigo: '33.01.12', descripcion: 'Informe Psicológico Clínico / Aptitud Laboral o Educativa', duracionMin: 30 },
   { codigo: '33.01.15', descripcion: 'Orientación a Padres / Cuidadores', duracionMin: 45 },
-  { codigo: '33.01.99', descripcion: 'Atención Psicológica Virtual / Telepsicología (Res. MSAL)', duracionMin: 45 }
+  { codigo: '33.01.99', descripcion: 'Atención Psicológica Virtual / Telepsicología (Res. MSAL)', duracionMin: 45 },
+  // Ley 24.901: Sistema de Prestaciones Básicas en Habilitación y Rehabilitación Integral a favor de las
+  // Personas con Discapacidad. Nomenclador aprobado por Res. MSyAS 428/1999. Sesiones de 45 a 60 min,
+  // máximo 6 horas semanales, complemento de una prestación principal.
+  { codigo: 'L.24901-APOYO', descripcion: 'Prestación de Apoyo a la Discapacidad - Psicología (Ley 24.901 / Res. 428/99)', duracionMin: 60, ley: 'Ley 24.901' }
 ];
 
 // Tipos de comprobantes según codificación fiscal de ARCA / AFIP
