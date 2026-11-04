@@ -266,15 +266,13 @@ export function AppContent() {
 
   // Facturas handlers
   const handleSaveFactura = (facturaData) => {
-    let updated;
-    const exists = facturas.some(f => f.id === facturaData.id);
-    if (exists) {
-      updated = facturas.map(f => f.id === facturaData.id ? facturaData : f);
-    } else {
-      updated = [facturaData, ...facturas];
-    }
-    setFacturas(updated);
-    saveToStorage('psicoplus_facturas_v1', updated);
+    // Actualización funcional: al anular se guardan dos comprobantes seguidos sin pisarse.
+    setFacturas(prev => {
+      const exists = prev.some(f => f.id === facturaData.id);
+      const updated = exists ? prev.map(f => f.id === facturaData.id ? facturaData : f) : [facturaData, ...prev];
+      saveToStorage('psicoplus_facturas_v1', updated);
+      return updated;
+    });
   };
 
   const handleDeleteFactura = (facturaId) => {

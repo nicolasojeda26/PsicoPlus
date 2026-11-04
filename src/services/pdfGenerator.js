@@ -176,7 +176,7 @@ export const generateFacturaPDF = async ({ factura = {}, config = {} }) => {
 
   const tipoCodigo = factura.tipoComprobanteCodigo || codigoTipoComprobante(factura.tipoComprobante);
   const letra = tipoCodigo === 6 ? 'B' : 'C';
-  const titulo = tipoCodigo === 15 || tipoCodigo === 9 ? 'RECIBO' : 'FACTURA';
+  const titulo = tipoCodigo === 15 || tipoCodigo === 9 ? 'RECIBO' : tipoCodigo === 13 || tipoCodigo === 8 ? 'NOTA DE CRÉDITO' : 'FACTURA';
   const estadoFiscal = estadoFiscalFactura(factura);
   const cuitEmisor = String(factura.cuitEmisor || config.cuit || '').replace(/\D/g, '');
   const numeracion = partesNumeroComprobante(factura.numeroFactura, factura.puntoVenta || config.puntoVenta);
@@ -335,6 +335,11 @@ export const generateFacturaPDF = async ({ factura = {}, config = {} }) => {
     negrita(10.5);
     doc.text('Importe Total: $', 173, 209.8, { align: 'right' });
     doc.text(num(total), 202, 209.8, { align: 'right' });
+
+    if (factura.comprobanteAsociado?.numero) {
+      negrita(8.5); doc.text('Comprobante asociado:', 9, 189);
+      normal(8.5); doc.text(`${factura.comprobanteAsociado.tipo || 'Factura C'} ${factura.comprobanteAsociado.numero}`, 9 + doc.getTextWidth('Comprobante asociado:') + 2, 189);
+    }
 
     if (estadoFiscal !== 'valida') {
       doc.setTextColor(200, 0, 0);

@@ -16,7 +16,8 @@ import {
   QrCode,
   Building2,
   RefreshCw,
-  FileCheck
+  FileCheck,
+  Ban
 } from 'lucide-react';
 import { periodoLabel } from '../../lib/dates';
 import { generateFacturaPDF } from '../../services/pdfGenerator';
@@ -29,6 +30,7 @@ import {
   condicionIvaReceptorId,
   documentoReceptor,
   estadoFiscalFactura,
+  partesNumeroComprobante,
 } from '../../services/arcaService';
 import { autorizarComprobanteArca } from '../../services/arcaClient';
 
@@ -87,9 +89,94 @@ export const FacturasView = ({
   ]);
 
   // Totals calculations
-  const totalFacturado = facturas.reduce((acc, f) => acc + (f.total || 0), 0);
-  const totalCobrado = facturas.filter(f => f.estado === 'Cobrada').reduce((acc, f) => acc + (f.total || 0), 0);
-  const totalPendiente = facturas.filter(f => f.estado === 'Pendiente').reduce((acc, f) => acc + (f.total || 0), 0);
+  // Las facturas anuladas y las notas de crédito no suman en los totales.
+  const esNotaCredito = (f) => Number(f.tipoComprobanteCodigo) === 13;
+  const facturasVigentes = facturas.filter(f => f.estado !== 'Anulada' && !esNotaCredito(f));
+  const totalFacturado = facturasVigentes.reduce((acc, f) => acc + (f.total || 0), 0);
+  const totalCobrado = facturasVigentes.filter(f => f.estado === 'Cobrada').reduce((acc, f) => acc + (f.total || 0), 0);
+  const totalPendiente = facturasVigentes.filter(f => f.estado === 'Pendiente').reduce((acc, f) => acc + (f.total || 0), 0);
+  const [anulandoId, setAnulandoId] = useState(null);
+
+  const hoyISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  // Anula una factura autorizada emitiendo una Nota de Crédito C en ARCA por el total.
+  const handleAnularConNC = async (factura) => {
+    const ambienteConfig = config.ambienteArca === 'produccion' ? 'produccion' : 'homologacion';
+    if ((factura.arcaAmbiente || 'homologacion') !== ambienteConfig) {
+      toast.showError(`Esta factura es de ${factura.arcaAmbiente === 'produccion' ? 'Producción' : 'Homologación'}. Cambiá el entorno en Configuración para anularla.`);
+      return;
+    }
+    const partes = partesNumeroComprobante(factura.numeroFactura, factura.puntoVenta || config.puntoVenta);
+    const receptor = factura.docTipoReceptor
+      ? { docTipo: Number(factura.docTipoReceptor), docNro: String(factura.pacienteDni || '').replace(/\D/g, '') || '0' }
+      : documentoReceptor(factura.pacienteDni);
+    const ok = confirm(
+      `Se va a emitir en ARCA una Nota de Crédito C por $${Number(factura.total).toLocaleString('es-AR')} que anula la ${factura.tipoComprobante} ${factura.numeroFactura} (${factura.pacienteNombre}).\n\n`
+      + (ambienteConfig === 'produccion' ? 'Es un comprobante REAL y no se puede deshacer. ' : '')
+      + '¿Continuar?'
+    );
+    if (!ok) return;
+
+    setAnulandoId(factura.id);
+    try {
+      const hoy = hoyISO();
+      const res = await autorizarComprobanteArca({
+        config,
+        comprobante: {
+          tipoComprobante: 13,
+          docTipo: receptor.docTipo,
+          docNro: receptor.docNro,
+          condicionIvaReceptorId: condicionIvaReceptorId(factura.condicionIvaReceptor) || 5,
+          total: factura.total,
+          fechaEmision: hoy,
+          fechaServicioDesde: factura.fechaServicioDesde || factura.fechaEmision,
+          fechaServicioHasta: factura.fechaServicioHasta || factura.fechaEmision,
+          fechaVencimientoPago: (factura.fechaVencimientoPago || '') > hoy ? factura.fechaVencimientoPago : hoy,
+          comprobanteAsociado: {
+            tipo: factura.tipoComprobanteCodigo || codigoTipoComprobante(factura.tipoComprobante),
+            puntoVenta: partes.puntoVenta,
+            numero: partes.numero,
+            cuit: receptor.docTipo === 80 ? receptor.docNro : undefined,
+            fecha: factura.fechaEmision,
+          },
+        },
+      });
+      onSaveFactura({
+        ...factura,
+        id: `nc-${Date.now()}`,
+        numeroFactura: res.numeroFactura,
+        tipoComprobante: 'Nota de Crédito C',
+        tipoComprobanteCodigo: 13,
+        fechaEmision: hoy,
+        estado: 'Emitida',
+        cae: res.cae,
+        vencimientoCae: res.vencimientoCae,
+        arcaAutorizado: true,
+        arcaAmbiente: res.ambiente,
+        puntoVenta: res.puntoVenta,
+        fechaAutorizacionArca: new Date().toISOString(),
+        comprobanteAsociado: { tipo: factura.tipoComprobante, numero: factura.numeroFactura },
+        observaciones: `Anula ${factura.tipoComprobante} ${factura.numeroFactura}.`,
+      });
+      onSaveFactura({ ...factura, estado: 'Anulada', anuladaPor: res.numeroFactura });
+      toast.showSuccess(`Factura ${factura.numeroFactura} anulada con Nota de Crédito C ${res.numeroFactura} (CAE ${res.cae}).`);
+    } catch (err) {
+      toast.showError(err.message || 'No se pudo emitir la nota de crédito.');
+    } finally {
+      setAnulandoId(null);
+    }
+  };
+
+  // Para facturas que ya se anularon por fuera de PsicoPlus (por ejemplo, en Comprobantes en línea).
+  const handleMarcarAnulada = (factura) => {
+    const nc = prompt(`¿Con qué nota de crédito se anuló la ${factura.numeroFactura}? (ej. 0002-00000001)\nEsto NO emite nada en ARCA, solo la marca como anulada en PsicoPlus.`);
+    if (nc === null) return;
+    onSaveFactura({ ...factura, estado: 'Anulada', anuladaPor: nc.trim() || 'NC emitida fuera de PsicoPlus' });
+    toast.showInfo(`Factura ${factura.numeroFactura} marcada como anulada.`);
+  };
   const totalConCae = facturas.filter(f => estadoFiscalFactura(f) === 'valida').length;
   const [arcaAutorizacion, setArcaAutorizacion] = useState(null);
   const [facturaAutorizada, setFacturaAutorizada] = useState(null);
@@ -682,6 +769,12 @@ export const FacturasView = ({
 
                       {/* Estado Toggle */}
                       <td className="px-4 py-3 text-center">
+                        {factura.estado === 'Anulada' || esNotaCredito(factura) ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700" title={factura.anuladaPor ? `Anulada con NC ${factura.anuladaPor}` : ''}>
+                            <Ban size={11} />
+                            <span>{factura.estado === 'Anulada' ? `Anulada${factura.anuladaPor ? ` (NC ${factura.anuladaPor})` : ''}` : 'Nota de crédito'}</span>
+                          </span>
+                        ) : (
                         <button
                           onClick={() => onUpdateFacturaEstado(factura.id, isCobrada ? 'Pendiente' : 'Cobrada')}
                           title="Click para cambiar estado"
@@ -694,6 +787,7 @@ export const FacturasView = ({
                           {isCobrada ? <CheckCircle2 size={11} /> : <Clock size={11} />}
                           <span>{factura.estado}</span>
                         </button>
+                        )}
                       </td>
 
                       {/* Acciones */}
@@ -706,6 +800,26 @@ export const FacturasView = ({
                           >
                             <Download size={13} />
                           </button>
+
+                          {factura.arcaAutorizado && factura.estado !== 'Anulada' && !esNotaCredito(factura) && (
+                            <>
+                              <button
+                                onClick={() => handleAnularConNC(factura)}
+                                disabled={anulandoId === factura.id}
+                                title="Anular con Nota de Crédito C en ARCA"
+                                className="px-2 py-1 text-[11px] font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950 rounded-lg transition-colors border border-rose-200 dark:border-rose-900 whitespace-nowrap disabled:opacity-50"
+                              >
+                                {anulandoId === factura.id ? 'Anulando…' : 'Anular con NC'}
+                              </button>
+                              <button
+                                onClick={() => handleMarcarAnulada(factura)}
+                                title="Ya la anulé por fuera de PsicoPlus: solo marcarla"
+                                className="px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg whitespace-nowrap"
+                              >
+                                Ya anulada
+                              </button>
+                            </>
+                          )}
 
                           <button
                             onClick={() => handleSendWhatsapp(factura)}
