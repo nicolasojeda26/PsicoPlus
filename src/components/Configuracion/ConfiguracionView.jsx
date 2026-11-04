@@ -28,6 +28,7 @@ import {
   CloudOff
 } from 'lucide-react';
 import { saveCloudSettings } from '../../services/cloudSettings';
+import { DIAS_SEMANA, horarioDeSede, describirHorario } from '../../lib/agendaPortal';
 import { exportFullBackup, resetToDemoData } from '../../services/storage';
 import { ProBadge } from '../Common/ProBadge';
 import { PLANS, PLAN_LIMITS, activatePromoCode, switchPlanDirectly } from '../../services/subscription';
@@ -184,6 +185,20 @@ export const ConfiguracionView = ({
     const updated = [...sedesData];
     updated[index] = { ...updated[index], [field]: value };
     setSedesData(updated);
+  };
+
+  // Días y horario de atención de la sede (lo usa el portal de pacientes para ofrecer turnos).
+  const handleHorarioChange = (index, cambios) => {
+    const updated = [...sedesData];
+    const horario = { ...horarioDeSede(updated[index]), ...cambios };
+    updated[index] = { ...updated[index], horario, diasAtencion: describirHorario(horario) };
+    setSedesData(updated);
+  };
+
+  const toggleDia = (index, dia) => {
+    const actual = horarioDeSede(sedesData[index]).dias;
+    const dias = actual.includes(dia) ? actual.filter(d => d !== dia) : [...actual, dia];
+    handleHorarioChange(index, { dias });
   };
 
   const handleAddSede = () => {
@@ -693,13 +708,50 @@ export const ConfiguracionView = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Días y Horarios</label>
-                  <input
-                    type="text"
-                    value={sede.diasAtencion}
-                    onChange={(e) => handleSedeChange(idx, 'diasAtencion', e.target.value)}
-                    className="input-field"
-                  />
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Horario de atención</label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="time"
+                      step="900"
+                      value={horarioDeSede(sede).desde}
+                      onChange={(e) => handleHorarioChange(idx, { desde: e.target.value })}
+                      className="input-field"
+                      aria-label="Desde"
+                    />
+                    <span className="text-[12px] text-slate-500">a</span>
+                    <input
+                      type="time"
+                      step="900"
+                      value={horarioDeSede(sede).hasta}
+                      onChange={(e) => handleHorarioChange(idx, { hasta: e.target.value })}
+                      className="input-field"
+                      aria-label="Hasta"
+                    />
+                  </div>
+                </div>
+                <div className="sm:col-span-3">
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Días de atención (los usa el portal de pacientes)</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DIAS_SEMANA.map(({ n, corto, largo }) => {
+                      const activo = horarioDeSede(sede).dias.includes(n);
+                      return (
+                        <button
+                          key={n}
+                          type="button"
+                          aria-pressed={activo}
+                          title={largo}
+                          onClick={() => toggleDia(idx, n)}
+                          className={`h-8 min-w-11 px-2.5 rounded-lg text-[12.5px] font-medium border transition-colors ${
+                            activo
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          {corto}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             ))}

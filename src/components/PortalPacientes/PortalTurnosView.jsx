@@ -26,6 +26,12 @@ import {
   Check
 } from 'lucide-react';
 import { generateWhatsappLink, formatArgentinaPhoneForWhatsapp } from '../../services/whatsapp';
+import { generarSlots, proximasFechas, horarioDeSede, describirHorario, atiendeEseDia, finDeTurno } from '../../lib/agendaPortal';
+import { portalUrl } from '../../services/portalCloud';
+import { parseISODate } from '../../lib/dates';
+
+const etiquetaFecha = (iso) =>
+  parseISODate(iso).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' });
 
 export const PortalTurnosView = ({
   sedes = [],
@@ -36,18 +42,15 @@ export const PortalTurnosView = ({
   onActualizarTurnoEstado,
   onDeleteTurno,
   onBackToApp,
+  portalId = null,
   isStandalone = false
 }) => {
   const [step, setStep] = useState(1);
   const [copiedLink, setCopiedLink] = useState(false);
 
   // Booking Form State
-  const [selectedSedeId, setSelectedSedeId] = useState(sedes[0]?.id || 'sede-centro');
-  const [selectedFecha, setSelectedFecha] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
-  });
+  const [selectedSedeId, setSelectedSedeId] = useState(sedes[0]?.id || '');
+  const [selectedFecha, setSelectedFecha] = useState(() => proximasFechas(sedes[0], 1)[0] || '');
   const [selectedHora, setSelectedHora] = useState('');
   
   // Patient details
@@ -61,6 +64,8 @@ export const PortalTurnosView = ({
 
   // Confirmation result
   const [confirmedTurno, setConfirmedTurno] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [errorEnvio, setErrorEnvio] = useState('');
 
   const solicitudesWebPendientes = turnos.filter(t => t.estado === 'Solicitado (Web)');
   const selectedSede = sedes.find(s => s.id === selectedSedeId) || sedes[0];
@@ -71,42 +76,37 @@ export const PortalTurnosView = ({
     return <Video size={20} className="text-sky-600 dark:text-sky-400" />;
   };
 
-  const availableSlots = [
-    '09:00', '09:45', '10:30', '11:15', '12:00',
-    '14:00', '14:45', '15:30', '16:15', '17:00', '17:45', '18:30', '19:15'
-  ];
+  const duracion = config.duracionTurnoMinutos || 45;
+  const horarioSede = selectedSede ? horarioDeSede(selectedSede) : null;
+  const fechasSugeridas = selectedSede ? proximasFechas(selectedSede, 6) : [];
+  const slots = generarSlots({ sede: selectedSede, fecha: selectedFecha, duracion, turnos });
+  const slotsLibres = slots.filter(s => !s.ocupado);
 
-  const isSlotOccupied = (hora) => {
-    return turnos.some(t => 
-      t.fecha === selectedFecha && 
-      t.horaInicio === hora && 
-      t.estado !== 'Cancelado'
-    );
+  const elegirSede = (id) => {
+    setSelectedSedeId(id);
+    const sede = sedes.find(s => s.id === id);
+    setSelectedFecha(proximasFechas(sede, 1)[0] || '');
+    setSelectedHora('');
   };
 
   const handleCopyLink = () => {
-    const url = `${window.location.origin}${window.location.pathname}?portal=paciente`;
+    const url = portalUrl(portalId);
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
   const handleShareWhatsapp = () => {
-    const url = `${window.location.origin}${window.location.pathname}?portal=paciente`;
+    const url = portalUrl(portalId);
     const msg = `¡Hola! Te comparto el enlace para solicitar tu turno de psicología online con ${config.nombre || 'la Lic. Virna Toledo'}: ${url}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
-  const calculateEndTime = (startTime) => {
-    if (!startTime) return '';
-    const [h, m] = startTime.split(':').map(Number);
-    const date = new Date();
-    date.setHours(h, m + 45, 0);
-    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-  };
+  const calculateEndTime = (startTime) => (startTime ? finDeTurno(startTime, duracion) : '');
 
-  const handleCompleteBooking = (e) => {
+  const handleCompleteBooking = async (e) => {
     e.preventDefault();
+    if (enviando) return;
     if (!selectedHora) {
       alert('Por favor seleccioná un horario disponible.');
       return;
@@ -128,7 +128,7 @@ export const PortalTurnosView = ({
       horaInicio: selectedHora,
       horaFin: calculateEndTime(selectedHora),
       sedeId: selectedSedeId,
-      modalidad: selectedSedeId === 'sede-online' ? 'Online' : 'Presencial',
+      modalidad: selectedSedeId === 'sede-online' || selectedSede?.icono === 'Video' ? 'Online' : 'Presencial',
       estado: 'Solicitado (Web)',
       coseguroMonto: coseguro,
       coseguroEstado: 'Pendiente',
@@ -136,9 +136,17 @@ export const PortalTurnosView = ({
       notas: `Solicitud Online • DNI: ${dni} • ${motivoConsulta ? `Motivo: ${motivoConsulta}` : ''}`
     };
 
-    if (onSaveTurno) {
-      onSaveTurno(newTurno);
+    setErrorEnvio('');
+    setEnviando(true);
+    try {
+      if (onSaveTurno) await onSaveTurno(newTurno);
+    } catch (err) {
+      console.error('No se pudo enviar la solicitud:', err);
+      setErrorEnvio('No pudimos enviar tu solicitud. Revisá tu conexión e intentá de nuevo.');
+      setEnviando(false);
+      return;
     }
+    setEnviando(false);
 
     setConfirmedTurno(newTurno);
     setStep(4);
@@ -181,6 +189,16 @@ export const PortalTurnosView = ({
               </button>
             </div>
           </div>
+
+          {!portalId && (
+            <div className="flex items-start gap-2 p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900 text-[13px]">
+              <AlertCircle size={16} className="mt-0.5 shrink-0" />
+              <span>
+                Para que el link muestre tus sedes y horarios en el celular de tus pacientes, iniciá sesión con tu cuenta.
+                Sin sesión, el link solo funciona en este navegador.
+              </span>
+            </div>
+          )}
 
           {/* Solicitudes Web Recibidas */}
           {solicitudesWebPendientes.length > 0 && (
@@ -336,7 +354,7 @@ export const PortalTurnosView = ({
                   return (
                     <div
                       key={sede.id}
-                      onClick={() => setSelectedSedeId(sede.id)}
+                      onClick={() => elegirSede(sede.id)}
                       className={`p-4 rounded-2xl border transition-all cursor-pointer text-left flex flex-col justify-between relative ${
                         isSelected 
                           ? 'border-emerald-600 bg-emerald-50/40 dark:bg-emerald-950/40 ring-2 ring-emerald-500/20' 
@@ -356,7 +374,7 @@ export const PortalTurnosView = ({
                         <p className="text-[12px] text-slate-500 mt-0.5">{sede.direccion}</p>
                       </div>
                       <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                        {sede.diasAtencion}
+                        {describirHorario(horarioDeSede(sede))}
                       </div>
                     </div>
                   );
@@ -367,6 +385,7 @@ export const PortalTurnosView = ({
                 <button
                   type="button"
                   onClick={() => setStep(2)}
+                  disabled={!selectedSede}
                   className="btn btn-primary text-xs py-2 px-5 font-semibold"
                 >
                   <span>Continuar a Selección de Horario</span>
@@ -382,8 +401,11 @@ export const PortalTurnosView = ({
               <div className="text-center max-w-md mx-auto mb-4">
                 <h2 className="text-base font-semibold text-slate-900 dark:text-white">Paso 2: Seleccioná Día y Horario</h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Sede seleccionada: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{selectedSede.nombre}</span>
+                  Sede seleccionada: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{selectedSede?.nombre}</span>
                 </p>
+                {horarioSede && (
+                  <p className="text-[12px] text-slate-500 mt-0.5">Atiende: {describirHorario(horarioSede)}</p>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -396,27 +418,48 @@ export const PortalTurnosView = ({
                   <input
                     type="date"
                     value={selectedFecha}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={proximasFechas(selectedSede, 1, new Date(Date.now() - 86400000))[0] || ''}
                     onChange={(e) => {
                       setSelectedFecha(e.target.value);
                       setSelectedHora('');
                     }}
                     className="input-field text-xs font-semibold"
                   />
-                  <p className="text-[12px] text-slate-500">
-                    Atención sujeta a disponibilidad según el cronograma de la sede.
-                  </p>
+                  {fechasSugeridas.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {fechasSugeridas.map(f => (
+                        <button
+                          key={f}
+                          type="button"
+                          onClick={() => { setSelectedFecha(f); setSelectedHora(''); }}
+                          className={`px-2.5 py-1 rounded-lg text-[12px] font-medium border transition-colors capitalize ${
+                            selectedFecha === f
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-emerald-50 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          {etiquetaFecha(f)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Slots Grid */}
                 <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Clock size={13} /> Horarios Disponibles ({selectedFecha})
+                    <Clock size={13} /> Horarios Disponibles {selectedFecha && <span className="capitalize">({etiquetaFecha(selectedFecha)})</span>}
                   </label>
-                  
+
+                  {selectedFecha && !atiendeEseDia(selectedSede, selectedFecha) && (
+                    <p className="text-[12.5px] text-slate-500">Ese día no hay atención en esta sede. Elegí uno de los días sugeridos.</p>
+                  )}
+                  {selectedFecha && atiendeEseDia(selectedSede, selectedFecha) && slotsLibres.length === 0 && (
+                    <p className="text-[12.5px] text-slate-500">No quedan horarios libres ese día. Probá con otra fecha.</p>
+                  )}
+
                   <div className="grid grid-cols-3 gap-1.5">
-                    {availableSlots.map((slot) => {
-                      const occupied = isSlotOccupied(slot);
+                    {slots.map(({ hora: slot, ocupado: occupied }) => {
                       const isSelected = selectedHora === slot;
 
                       return (
@@ -606,12 +649,16 @@ export const PortalTurnosView = ({
 
                 <button
                   type="submit"
+                  disabled={enviando}
                   className="btn btn-primary text-xs font-semibold"
                 >
                   <CheckCircle2 size={14} />
-                  <span>Confirmar y Solicitar Turno</span>
+                  <span>{enviando ? 'Enviando…' : 'Confirmar y Solicitar Turno'}</span>
                 </button>
               </div>
+              {errorEnvio && (
+                <p className="text-[12.5px] text-rose-600 dark:text-rose-400 text-right">{errorEnvio}</p>
+              )}
             </form>
           )}
 
@@ -666,7 +713,7 @@ export const PortalTurnosView = ({
                 <button
                   onClick={() => {
                     const profTel = config.telefono || '+5493794889922';
-                    const msg = `¡Hola Lic. Virna! Acabo de solicitar un turno en tu portal web para el día ${confirmedTurno.fecha} a las ${confirmedTurno.horaInicio} hs en ${selectedSede.nombre}. Mi nombre es ${confirmedTurno.pacienteNombre}. ¡Muchas gracias!`;
+                    const msg = `¡Hola${config.nombre ? ` ${config.nombre}` : ''}! Acabo de solicitar un turno en tu portal web para el día ${confirmedTurno.fecha} a las ${confirmedTurno.horaInicio} hs en ${selectedSede.nombre}. Mi nombre es ${confirmedTurno.pacienteNombre}. ¡Muchas gracias!`;
                     const url = generateWhatsappLink(profTel, msg);
                     window.open(url, '_blank');
                   }}
