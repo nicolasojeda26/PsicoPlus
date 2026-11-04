@@ -57,6 +57,7 @@ export const ConfiguracionView = ({
   onSaveConfig,
   onSaveSedes,
   cloudStatus = 'local',
+  onConnectAccount = null,
   onOpenUpgradeModal,
   onSubscriptionUpdated,
   onOpenLegal
@@ -293,6 +294,11 @@ export const ConfiguracionView = ({
               {cloudStatus === 'confirm-email' && 'Confirmá tu email para sincronizar'}
               {cloudStatus === 'local' && 'Solo en este navegador'}
             </span>
+            {onConnectAccount && (
+              <button type="button" onClick={onConnectAccount} className="ml-1 font-semibold underline underline-offset-2">
+                Conectar
+              </button>
+            )}
           </div>
         )}
       </div>

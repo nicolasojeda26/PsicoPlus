@@ -22,6 +22,7 @@ import { LandingPage } from './components/Landing/LandingPage';
 import { LegalModal } from './components/Legal/LegalModal';
 import { BrandMark, BrandWordmark } from './components/Common/BrandMark';
 import { CookieConsentBanner } from './components/Common/CookieConsentBanner';
+import { isSupabaseConfigured } from './lib/supabase';
 import { getPortalId, armarDatosPortal, publicarPortal, cargarPortal, enviarSolicitud, recibirSolicitudes, borrarSolicitudes } from './services/portalCloud';
 import { hasCloudSession, loadCloudSettings, saveCloudSettings, closeCloudSession } from './services/cloudSettings';
 import './App.css';
@@ -208,6 +209,14 @@ export function AppContent() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Cuentas que solo existían en el navegador: se conectan a la nube volviendo a ingresar la contraseña.
+  const handleConnectAccount = () => {
+    setAuthModalMode('login');
+    setIsAuthModalOpen(true);
+  };
+  const needsCloudConnection =
+    isSupabaseConfigured && !currentUser?.isDemo && (cloudStatus === 'local' || cloudStatus === 'confirm-email');
 
   const handleOpenUpgrade = (reason = '') => {
     setUpgradeReason(reason);
@@ -444,7 +453,11 @@ export function AppContent() {
             Acceso profesional →
           </button>
         </div>
-        {portalParamId ? (
+        {!portalParamId && !hasStoredSession ? (
+          <div className="max-w-md mx-auto card p-6 text-center text-[14px] text-slate-600 dark:text-slate-300">
+            Este link de turnos es de una versión anterior. Pedile a tu profesional que te envíe el link nuevo.
+          </div>
+        ) : portalParamId ? (
           remotePortal.status === 'ok' ? (
             <PortalTurnosView
               sedes={remotePortal.data.sedes || []}
@@ -568,6 +581,18 @@ export function AppContent() {
         />
 
         <main className="flex-1 p-3.5 sm:p-6 md:p-8 pb-28 md:pb-8 max-w-7xl w-full mx-auto">
+          {needsCloudConnection && (
+            <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900 text-[13.5px]">
+              <span>
+                {cloudStatus === 'confirm-email'
+                  ? 'Confirmá tu cuenta desde el correo que te enviamos y después volvé a conectarla para guardar tus datos en la nube y activar el link de turnos.'
+                  : 'Tu configuración está guardada solo en este navegador. Conectá tu cuenta (una sola vez) para guardarla en la nube y que el link de turnos muestre tus sedes y horarios.'}
+              </span>
+              <button type="button" onClick={handleConnectAccount} className="btn btn-primary text-xs shrink-0">
+                Conectar mi cuenta
+              </button>
+            </div>
+          )}
           {activeTab === 'dashboard' && (
             <DashboardView 
               sedes={sedes}
@@ -691,6 +716,7 @@ export function AppContent() {
               onDeleteTurno={handleDeleteTurno}
               onBackToApp={() => setActiveTab('dashboard')}
               portalId={portalId}
+              onConnectAccount={isSupabaseConfigured && !currentUser?.isDemo ? handleConnectAccount : null}
               isStandalone={false}
             />
           )}
@@ -704,6 +730,7 @@ export function AppContent() {
               onSaveConfig={handleSaveConfig}
               onSaveSedes={handleSaveSedes}
               cloudStatus={cloudStatus}
+              onConnectAccount={needsCloudConnection ? handleConnectAccount : null}
               onOpenUpgradeModal={handleOpenUpgrade}
               onSubscriptionUpdated={handlePlanUpdated}
               onOpenLegal={handleOpenLegal}
@@ -759,6 +786,7 @@ export function AppContent() {
         onClose={() => setIsAuthModalOpen(false)}
         key={`${authModalMode}-${isAuthModalOpen}`}
           initialMode={authModalMode}
+        initialEmail={currentUser?.isDemo ? '' : currentUser?.email || ''}
         onAuthSuccess={handleAuthSuccess}
       />
 
